@@ -193,15 +193,20 @@ internal class DiscoveryScreen(
             maxLines = 1
             isFocusable = true
             isClickable = true
-            setPadding(dp(8), dp(5), dp(8), dp(5))
+            setPadding(dp(12), dp(6), dp(12), dp(6))
             minHeight = dp(30)
+            // Pill chips: white when focused; the chosen value is brand orange on a soft fill.
             fun paint() {
                 val selected = chosen()
                 isSelected = selected
-                setTextColor(if (selected) TvStyle.accent else TvStyle.text)
-                background = TvStyle.card(context, hasFocus(), selected)
+                val focused = hasFocus()
+                setTextColor(if (focused) TvStyle.background else if (selected) TvStyle.accent else TvStyle.text)
+                typeface = if (focused || selected) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+                background = TvStyle.shape(context,
+                    if (focused) android.graphics.Color.WHITE else if (selected) TvVisual.QUIET_SELECTED else TvVisual.QUIET,
+                    radius = 999)
             }
-            setOnFocusChangeListener { _, _ -> paint() }
+            setOnFocusChangeListener { _, focused -> paint(); TvMotion.focus(this, focused, 1.06f) }
             setOnClickListener { action() }
             paint()
         }

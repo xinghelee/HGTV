@@ -1530,22 +1530,33 @@ class MainActivity : Activity() {
         val count = 5
         val gap = dp(14)
         val width =
-            ((resources.displayMetrics.widthPixels - dp(160) - gap * (count - 1)) / count).toInt()
+            ((resources.displayMetrics.widthPixels - dp(172) - dp(24) - gap * (count - 1)) / count).toInt()
+        list.clipChildren = false
+        list.setPadding(dp(12), dp(10), dp(12), dp(10))
+        scroll.clipChildren = false
         displayed.chunked(count).forEach { items ->
             val line = row()
             line.gravity = Gravity.TOP
+            line.clipChildren = false
             items.forEachIndexed { columnIndex, item ->
                 val card = column()
-                card.setPadding(dp(4), dp(4), dp(4), dp(6))
+                card.setPadding(0, 0, 0, dp(6))
+                card.clipChildren = false
                 focusStyle(card)
+                card.background = null
                 card.contentDescription = item.title
                 card.tag = item.id
                 catalogCards[item.id] = card
                 val position = if (tab == 2) ranking?.positions?.get(item.id) else null
-                val artwork = FrameLayout(this)
+                val artwork = FrameLayout(this).apply {
+                    background = TvStyle.shape(this@MainActivity, TvStyle.surface)
+                    outlineProvider = roundedOutline(12)
+                    clipToOutline = true
+                    foreground = TvStyle.focusRing(this@MainActivity, false)
+                }
                 card.addView(
                     artwork,
-                    lp(-1, ((width - dp(8)) / TvStyle.POSTER_ASPECT).roundToInt()),
+                    lp(-1, (width / TvStyle.POSTER_ASPECT).roundToInt()),
                 )
                 val image =
                     ImageView(this).apply {
@@ -1562,25 +1573,22 @@ class MainActivity : Activity() {
                             setTypeface(null, Typeface.BOLD)
                             setPadding(dp(8), dp(5), dp(8), dp(5))
                             background =
-                                rounded(
-                                    if ((position?.rank ?: Int.MAX_VALUE) <= 3) accent
-                                    else Color.rgb(28, 31, 39)
-                                )
+                                if ((position?.rank ?: Int.MAX_VALUE) <= 3) TvStyle.brandGradient(this@MainActivity, 10)
+                                else rounded(0xB3000000.toInt())
                         },
                         FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START),
                     )
                     card.contentDescription =
                         "$rankLabel，${item.title}，${position?.heat?.ifBlank { "热度暂无" } ?: "热度暂无"}"
                 }
-                card.addView(
-                    text(item.title, 14f).apply {
+                val cardTitle =
+                    text(item.title, 14f, TvStyle.muted).apply {
                         maxLines = 2
                         minLines = 2
                         ellipsize = TextUtils.TruncateAt.END
-                        setPadding(dp(3), dp(5), dp(3), 0)
-                    },
-                    lp(-1, -2).apply { weight = 1f },
-                )
+                        setPadding(dp(2), dp(8), dp(2), 0)
+                    }
+                card.addView(cardTitle, lp(-1, -2).apply { weight = 1f })
                 val cloud = if (isHistory()) mergedCloudProgress(item.id) else null
                 val progress =
                     cloud?.let {
@@ -1645,7 +1653,10 @@ class MainActivity : Activity() {
                     } else false
                 }
                 card.setOnFocusChangeListener { _, focused ->
-                    card.background = TvStyle.card(this, focused)
+                    artwork.foreground = TvStyle.focusRing(this, focused)
+                    cardTitle.setTextColor(if (focused) TvStyle.text else TvStyle.muted)
+                    cardTitle.typeface = if (focused) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                    TvMotion.focus(card, focused, 1.06f)
                     if (focused) {
                         catalogFocus = item.id
                         loadCover(image, item.cover)
