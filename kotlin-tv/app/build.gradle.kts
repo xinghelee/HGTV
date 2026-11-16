@@ -23,7 +23,7 @@ android {
     defaultConfig {
         applicationId = "com.hongguotv.nativeapp"
         testInstrumentationRunner = "com.hongguotv.nativeapp.LivePlaybackInstrumentation"
-        manifestPlaceholders["appLabel"] = "hongguoTV"
+        manifestPlaceholders["appLabel"] = "红果短剧"
         minSdk = 21
         if (!legacyAudio) minSdk = 23
         buildConfigField("boolean", "LEGACY_AUDIO", legacyAudio.toString())
@@ -64,7 +64,7 @@ android {
         getByName("debug") {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug.20261114"
-            manifestPlaceholders["appLabel"] = "hongguoTV"
+            manifestPlaceholders["appLabel"] = "红果短剧"
         }
         getByName("release") {
             signingConfig = signingConfigs.getByName("delivery")
