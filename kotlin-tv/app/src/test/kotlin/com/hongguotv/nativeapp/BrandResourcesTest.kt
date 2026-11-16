@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [21, 26, 33], qualifiers = "mdpi")
 class BrandResourcesTest {
-    @Test fun manifestIconKeepsTransparentRgbaTvBodyWithoutColoredBackground() {
+    @Test fun manifestIconIsRoundedSquareRgbaWithTransparentCorners() {
         val app = RuntimeEnvironment.getApplication()
         val info = app.packageManager.getApplicationInfo(app.packageName, 0)
         val icon = app.resources.getDrawable(info.icon, app.theme)
@@ -43,25 +43,8 @@ class BrandResourcesTest {
             assertEquals(0, alphaAt(w - 1, 0))
             assertEquals(0, alphaAt(0, h - 1))
             assertEquals(0, alphaAt(w - 1, h - 1))
-            assertEquals(0, alphaAt(w / 2, 0))
-            assertEquals(0, alphaAt(w / 2, h - 1))
-            assertTrue("Expected opaque TV body at center, got ${alphaAt(w / 2, h / 2)}", alphaAt(w / 2, h / 2) >= 240)
-            val cx = w / 2.0
-            val cy = h / 2.0
-            val maxRadius = w / 2.0
-            for (y in 0 until h) {
-                for (x in 0 until w) {
-                    if (alphaAt(x, y) > 0) {
-                        val cornerDist = maxOf(
-                            hypot(x - cx, y - cy),
-                            hypot(x + 1 - cx, y - cy),
-                            hypot(x - cx, y + 1 - cy),
-                            hypot(x + 1 - cx, y + 1 - cy),
-                        )
-                        assertTrue("Visible TV pixel ($x,$y) exceeds circular mask radius $maxRadius", cornerDist <= maxRadius)
-                    }
-                }
-            }
+            assertTrue("Expected opaque rounded-square icon at center, got ${alphaAt(w / 2, h / 2)}", alphaAt(w / 2, h / 2) >= 240)
+            assertTrue("Expected opaque edge midpoints of the rounded square", alphaAt(w / 2, 0) >= 240 && alphaAt(0, h / 2) >= 240)
         }
     }
 

@@ -270,7 +270,7 @@ class TvUsabilityTest {
             assertEquals(root.findViewWithTag<View>("settings-category-3").id, account.nextFocusLeftId)
             assertFalse(texts(root).any { it.text.toString().startsWith("版本与更新") })
             root.findViewWithTag<View>("settings-category-4").requestFocus()
-            assertTrue(texts(root).any { it.text == "关于hongguoTV" })
+            assertTrue(texts(root).any { it.text == "关于红果短剧" })
             assertFalse(texts(root).any { it.text == "登录与账户管理" })
         } finally {
             controller.destroy()

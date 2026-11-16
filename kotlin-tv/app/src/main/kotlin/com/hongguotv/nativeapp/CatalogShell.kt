@@ -31,14 +31,32 @@ internal class CatalogShell(context: Context, private val phone: (View) -> Unit 
         val compact = resources.configuration.screenHeightDp < 480
         orientation = HORIZONTAL
         setBackgroundColor(TvStyle.background)
+        clipChildren = false
+        rail.clipChildren = false
         rail.setPadding(dp(12), dp(if (compact) 12 else 20), dp(12), dp(if (compact) 12 else 16))
-        rail.setBackgroundColor(TvStyle.background)
-        rail.addView(ImageView(context).apply {
-            setImageResource(R.drawable.brand_mark)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "hongguoTV"
+        rail.background = TvStyle.scrim(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, 0xB3)
+        rail.addView(LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
             isFocusable = false
-            (drawable as? android.graphics.drawable.BitmapDrawable)?.isFilterBitmap = false
+            setPadding(dp(8), 0, 0, 0)
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.app_icon)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "红果短剧"
+                outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) =
+                        outline.setRoundRect(0, 0, view.width, view.height, view.width * .24f)
+                }
+                clipToOutline = true
+            }, LayoutParams(dp(if (compact) 26 else 32), dp(if (compact) 26 else 32)))
+            addView(TextView(context).apply {
+                text = "红果"
+                textSize = if (compact) 14f else 16f
+                setTextColor(TvStyle.text)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LayoutParams(-2, -2).apply { leftMargin = dp(8) })
         }, LayoutParams(-1, dp(if (compact) 40 else 56)).apply { bottomMargin = dp(if (compact) 12 else 24) })
         destinations.forEach { (index, label) ->
             if (index == 9) rail.addView(Space(context), LayoutParams(1, 0, 1f))
@@ -51,7 +69,7 @@ internal class CatalogShell(context: Context, private val phone: (View) -> Unit 
                 isFocusable = true
                 isClickable = true
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(if (compact) 6 else 10), dp(8), dp(if (compact) 6 else 10))
+                setPadding(dp(14), dp(if (compact) 6 else 10), dp(8), dp(if (compact) 6 else 10))
                 compoundDrawablePadding = dp(9)
                 setCompoundDrawablesWithIntrinsicBounds(TvGlyph(index, dp(18), TvStyle.muted), null, null, null)
                 isSelected = index == selectedDestination
@@ -65,21 +83,33 @@ internal class CatalogShell(context: Context, private val phone: (View) -> Unit 
             buttons += button
             rail.addView(button, LayoutParams(-1, dp(if (compact) 28 else 38)).apply { bottomMargin = dp(if (compact) 2 else 6) })
         }
-        addView(rail, LayoutParams(dp(112), -1))
+        addView(rail, LayoutParams(dp(124), -1))
         body.setPadding(dp(24), dp(18), dp(24), dp(16))
         addView(body, LayoutParams(0, -1, 1f))
     }
 
     private fun paintNavigation(button: TextView) {
         val focused = button.hasFocus()
-        val ink = if (focused) TvStyle.background else if (button.isSelected) TvStyle.accent else TvStyle.muted
-        button.background = TvStyle.shape(context,
-            if (focused) TvStyle.text else if (button.isSelected) TvStyle.raised else Color.TRANSPARENT,
-            radius = 12)
+        val selected = button.isSelected
+        val ink = if (focused) TvStyle.background else if (selected) TvStyle.text else TvStyle.muted
+        val pill = TvStyle.shape(context, if (focused) TvStyle.text else Color.TRANSPARENT, radius = 999)
+        button.background =
+            if (selected && !focused && android.os.Build.VERSION.SDK_INT >= 23)
+                android.graphics.drawable.LayerDrawable(arrayOf(pill, TvStyle.brandBar(context))).apply {
+                    setLayerGravity(1, android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL)
+                    setLayerSize(1, dp(3), dp(18))
+                }
+            else pill
         button.setTextColor(ink)
-        button.typeface = if (button.isSelected || focused) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        button.typeface = if (selected || focused) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
         (button.compoundDrawables[0] as? TvGlyph)?.let { it.ink = ink; it.invalidateSelf() }
+        TvMotion.focus(button, focused, 1.04f)
     }
+
+    /** Ambient artwork behind the rail and content; only home feeds it, other pages stay solid. */
+    private val backdrop = HomeBackdrop(this)
+
+    fun showBackdrop(bitmap: android.graphics.Bitmap?) = backdrop.show(bitmap)
 
     fun select(index: Int) {
         selectedDestination = if (index in 3..5) 3 else index
@@ -90,6 +120,7 @@ internal class CatalogShell(context: Context, private val phone: (View) -> Unit 
     }
 
     fun clearBody() {
+        backdrop.clear()
         remembered = null
         body.removeAllViews()
     }

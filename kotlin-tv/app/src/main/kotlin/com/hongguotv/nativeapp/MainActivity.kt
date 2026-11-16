@@ -2018,10 +2018,14 @@ class MainActivity : Activity() {
                 { catalogFocus = it },
             )
         home.setSideEntry(nav[0])
-        shelves.firstOrNull { it.key == "resume" }?.entries?.firstOrNull()?.let { entry ->
-            home.setLeadingSection(HomeSpotlight(this, entry.series, entry.label, true, ::loadCover) { resume ->
-                openDetail(entry.series, resume)
-            })
+        home.backdrop = { catalogShell?.showBackdrop(it) }
+        val resumeEntry = shelves.firstOrNull { it.key == "resume" }?.entries?.firstOrNull()
+        val featured = resumeEntry?.series ?: catalog.firstOrNull { it.id !in library.hidden() }
+        featured?.let { series ->
+            val resume = resumeEntry != null
+            home.setLeadingSection(HomeSpotlight(this, series, resumeEntry?.label ?: series.tags, resume, ::loadCover) { play ->
+                openDetail(series, play)
+            }.also { it.backdrop = home.backdrop })
         }
         homeScreen = home
         body.addView(home, lp(-1, 0).apply { weight = 1f })
@@ -2410,7 +2414,7 @@ class MainActivity : Activity() {
                 }
                 4 -> {
                     lateinit var about: TextView
-                    about = setting("关于hongguoTV") {
+                    about = setting("关于红果短剧") {
                         tvTools.info("关于hongguoTV", "hongguoTV · 非官方客户端\n基于 N3urda/hongguoTV\n功能同步：tsukiyo-zero/hongguoTV\n版本：${BuildConfig.VERSION_NAME}\n项目：https://github.com/N3urda/hongguoTV\n\n本应用与红果官方无隶属关系。", about)
                     }
                     lateinit var license: TextView
@@ -4879,7 +4883,7 @@ class MainActivity : Activity() {
         }
         // Navigation is the outermost level on every page, including the scan action.
         if (screen == "catalog" && catalogShell?.hasNavigationFocus == true) {
-            tvTools.confirm("退出hongguoTV", "确定退出？", currentFocus) { finish() }
+            tvTools.confirm("退出红果短剧", "确定退出？", currentFocus) { finish() }
             return
         }
         if (screen == "catalog" && tab == 6) {

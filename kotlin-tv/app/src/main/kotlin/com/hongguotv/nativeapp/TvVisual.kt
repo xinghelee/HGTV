@@ -17,20 +17,20 @@ internal object TvVisual {
 
     fun panel(context: Context, modal: Boolean = false) = TvStyle.shape(
         context, TvStyle.surface,
-        if (modal) TvStyle.outline else Color.TRANSPARENT, radius = 10,
+        if (modal) TvStyle.outline else Color.TRANSPARENT, radius = 16,
     )
 
     fun row(context: Context, focused: Boolean, selected: Boolean = false, category: Boolean = false): Drawable =
         TvStyle.shape(context,
             if (focused) TvStyle.raised else if (selected || category) TvStyle.surface else Color.TRANSPARENT,
             if (focused) TvStyle.text else if (selected) TvStyle.accent else Color.TRANSPARENT,
-            radius = 7)
+            radius = 12)
 
     fun tab(context: Context, focused: Boolean, selected: Boolean): Drawable =
         TvStyle.shape(context,
             if (focused) TvStyle.raised else if (selected) TvStyle.surface else Color.TRANSPARENT,
             if (focused) TvStyle.text else if (selected) TvStyle.accent else Color.TRANSPARENT,
-            radius = 7)
+            radius = 12)
 
     fun backdrop(context: Context): Drawable = android.graphics.drawable.ColorDrawable(TvStyle.background)
 
