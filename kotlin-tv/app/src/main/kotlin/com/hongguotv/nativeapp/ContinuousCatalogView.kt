@@ -58,11 +58,12 @@ internal class ContinuousCatalogView(
             id = View.generateViewId()
             numColumns = columns
             stretchMode = GridView.STRETCH_COLUMN_WIDTH
-            horizontalSpacing = dp(14)
-            verticalSpacing = dp(10)
+            horizontalSpacing = dp(18)
+            verticalSpacing = dp(14)
             isVerticalScrollBarEnabled = false
             clipToPadding = false
-            setPadding(dp(3), dp(3), dp(3), dp(3))
+            clipChildren = false
+            setPadding(dp(12), dp(8), dp(12), dp(6))
             selector = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
             descendantFocusability = FOCUS_BLOCK_DESCENDANTS
             nextFocusUpId = upper.id
@@ -102,11 +103,7 @@ internal class ContinuousCatalogView(
                     isClickable = false
                     isLongClickable = false
                     if (this is ViewGroup) descendantFocusability = FOCUS_BLOCK_DESCENDANTS
-                    background =
-                        TvStyle.card(
-                            context,
-                            grid.hasFocus() && grid.selectedItemPosition == position,
-                        )
+                    paintCard(this, grid.hasFocus() && grid.selectedItemPosition == position)
                 }
             }
         }
@@ -224,18 +221,26 @@ internal class ContinuousCatalogView(
             includeFontPadding = false
             isFocusable = true
             isClickable = true
-            setPadding(dp(14), dp(6), dp(14), dp(6))
-            background = TvStyle.card(context, false)
-            setOnFocusChangeListener { _, focus -> background = TvStyle.card(context, focus) }
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+            background = TvStyle.shape(context, TvVisual.QUIET, radius = 999)
+            setOnFocusChangeListener { _, focus ->
+                background = TvStyle.shape(context, if (focus) android.graphics.Color.WHITE else TvVisual.QUIET, radius = 999)
+                setTextColor(if (focus) TvStyle.background else TvStyle.text)
+                TvMotion.focus(this, focus, 1.05f)
+            }
             setOnClickListener { click() }
         }
 
+    private fun paintCard(view: View, focused: Boolean) {
+        if (view is FocusPaintedCard) view.paintFocus(focused)
+        else view.background = TvStyle.card(context, focused)
+    }
+
     private fun paintFocus() {
-        for (i in 0 until grid.childCount) grid.getChildAt(i).background =
-            TvStyle.card(
-                context,
-                grid.hasFocus() && grid.firstVisiblePosition + i == grid.selectedItemPosition,
-            )
+        for (i in 0 until grid.childCount) paintCard(
+            grid.getChildAt(i),
+            grid.hasFocus() && grid.firstVisiblePosition + i == grid.selectedItemPosition,
+        )
     }
 
     private fun paintStatus() {
@@ -382,23 +387,48 @@ internal class ContinuousCatalogView(
     }
 }
 
-internal class CatalogPosterCard(context: Context) : LinearLayout(context) {
+/** Grid cells are not focusable themselves; the grid tells them when they are selected. */
+internal interface FocusPaintedCard {
+    fun paintFocus(focused: Boolean)
+}
+
+internal fun roundedOutline(radiusDp: Int) = object : android.view.ViewOutlineProvider() {
+    override fun getOutline(view: View, outline: android.graphics.Outline) =
+        outline.setRoundRect(0, 0, view.width, view.height, radiusDp * view.resources.displayMetrics.density)
+}
+
+internal class CatalogPosterCard(context: Context) : LinearLayout(context), FocusPaintedCard {
     val image =
         ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-    val poster = FrameLayout(context)
+    val poster = FrameLayout(context).apply {
+        background = TvStyle.shape(context, TvStyle.surface)
+        outlineProvider = roundedOutline(12)
+        clipToOutline = true
+        foreground = TvStyle.focusRing(context, false)
+    }
+    /** Ranking position, drawn on the poster's top-left corner. */
+    private val rank = TextView(context).apply {
+        textSize = 13f
+        setTextColor(android.graphics.Color.WHITE)
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        includeFontPadding = false
+        val density = resources.displayMetrics.density
+        setPadding((9 * density).toInt(), (4 * density).toInt(), (9 * density).toInt(), (4 * density).toInt())
+        visibility = GONE
+    }
     val title =
         TextView(context).apply {
             textSize = 14f
-            setTextColor(TvStyle.text)
+            setTextColor(TvStyle.muted)
             includeFontPadding = false
             minLines = 2
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
             val density = resources.displayMetrics.density
-            setPadding((2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt(), 0)
+            setPadding((2 * density).toInt(), (6 * density).toInt(), (2 * density).toInt(), 0)
         }
     val badge =
         TextView(context).apply {
@@ -414,17 +444,14 @@ internal class CatalogPosterCard(context: Context) : LinearLayout(context) {
     init {
         orientation = VERTICAL
         val density = resources.displayMetrics.density
-        setPadding(
-            (4 * density).toInt(),
-            (4 * density).toInt(),
-            (4 * density).toInt(),
-            (6 * density).toInt(),
-        )
+        clipChildren = false
+        setPadding(0, 0, 0, (6 * density).toInt())
         val defaultWidth =
             ((resources.displayMetrics.widthPixels * .9f - 14 * density * 5) / 6 - 8 * density)
                 .coerceAtLeast(1f)
         val defaultHeight = (defaultWidth / TvStyle.POSTER_ASPECT).roundToInt()
         poster.addView(image, FrameLayout.LayoutParams(-1, -1))
+        poster.addView(rank, FrameLayout.LayoutParams(-2, -2, android.view.Gravity.TOP or android.view.Gravity.START))
         addView(poster, LayoutParams(-1, defaultHeight))
         // Keep the original cover free of app labels.
         addView(title)
@@ -443,8 +470,29 @@ internal class CatalogPosterCard(context: Context) : LinearLayout(context) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
+    override fun paintFocus(focused: Boolean) {
+        background = null
+        poster.foreground = TvStyle.focusRing(context, focused)
+        title.setTextColor(if (focused) TvStyle.text else TvStyle.muted)
+        title.typeface = if (focused) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        TvMotion.focus(this, focused, 1.06f)
+    }
+
     fun show(item: Series, position: RankPosition? = null) {
         title.text = item.title
+        rank.visibility = if (position?.rank != null) VISIBLE else GONE
+        position?.rank?.let { n ->
+            rank.text = "$n"
+            // Top three get the brand gradient; the rest a quiet dark chip.
+            rank.background = android.graphics.drawable.GradientDrawable().apply {
+                val r = 10 * resources.displayMetrics.density
+                cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, 0f, 0f)
+                if (n <= 3) {
+                    orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+                    colors = intArrayOf(TvStyle.BRAND_START, android.graphics.Color.parseColor("#FF8A4C"))
+                } else setColor(0xB3000000.toInt())
+            }
+        }
         val rankLabel = position?.rank?.let { "第 $it 名" }.orEmpty()
         badge.text = listOf(rankLabel, position?.heat?.takeIf { it.isNotBlank() } ?: item.badge)
             .filter(String::isNotBlank).joinToString(" · ")
@@ -463,9 +511,13 @@ internal class CatalogPosterCard(context: Context) : LinearLayout(context) {
 }
 
 /** Landscape search rows keep the title readable without oversized posters. */
-internal class SearchResultCard(context: Context) : LinearLayout(context) {
+internal class SearchResultCard(context: Context) : LinearLayout(context), FocusPaintedCard {
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
-    val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+    val image = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        outlineProvider = roundedOutline(8)
+        clipToOutline = true
+    }
     private val title = TextView(context).apply {
         textSize = 18f
         setTextColor(TvStyle.text)
@@ -483,13 +535,22 @@ internal class SearchResultCard(context: Context) : LinearLayout(context) {
     init {
         orientation = HORIZONTAL
         gravity = android.view.Gravity.CENTER_VERTICAL
-        setPadding(dp(8), dp(8), dp(8), dp(8))
-        addView(image, LayoutParams(dp(63), dp(90)).apply { rightMargin = dp(12) })
+        setPadding(dp(10), dp(10), dp(14), dp(10))
+        addView(image, LayoutParams(dp(63), dp(90)).apply { rightMargin = dp(16) })
         val copy = LinearLayout(context).apply { orientation = VERTICAL }
         copy.addView(title, LayoutParams(-1, -2))
         copy.addView(badge, LayoutParams(-1, -2))
         addView(copy, LayoutParams(0, -2, 1f))
     }
+    override fun paintFocus(focused: Boolean) {
+        // Large cards stay translucent when focused; a white outline marks focus without glare.
+        background = TvStyle.shape(context, if (focused) 0x3DFFFFFF else TvVisual.QUIET,
+            if (focused) android.graphics.Color.WHITE else android.graphics.Color.TRANSPARENT, radius = 14)
+        title.typeface = if (focused) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+        badge.setTextColor(if (focused) TvStyle.text else TvStyle.muted)
+        TvMotion.focus(this, focused, 1.04f)
+    }
+
     fun show(item: Series) {
         title.text = item.title
         badge.text = item.badge

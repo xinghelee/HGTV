@@ -113,10 +113,11 @@ internal class SearchSuggestionsView(
                     setTextColor(TvStyle.text)
                     setPadding(dp(12), dp(8), dp(12), dp(8))
                     minHeight = if (grid) maxOf(dp(76), (paint.fontSpacing * 2).toInt() + paddingTop + paddingBottom + dp(4)) else dp(36)
-                    background = if (grid) TvStyle.shape(context, TvStyle.surface, TvStyle.outline) else TvStyle.card(context, false)
+                    background = TvStyle.shape(context, TvVisual.QUIET, radius = if (grid) 14 else 999)
                     setOnFocusChangeListener { _, focus ->
-                        background = if (grid) TvStyle.shape(context, if (focus) TvStyle.text else TvStyle.surface, if (focus) TvStyle.text else TvStyle.outline) else TvStyle.card(context, focus)
-                        setTextColor(if (grid && focus) TvStyle.background else TvStyle.text)
+                        background = TvStyle.shape(context, if (focus) android.graphics.Color.WHITE else TvVisual.QUIET, radius = if (grid) 14 else 999)
+                        setTextColor(if (focus) TvStyle.background else TvStyle.text)
+                        if (!grid) TvMotion.focus(this, focus, 1.06f)
                     }
                     setOnClickListener { search(value) }
                 }

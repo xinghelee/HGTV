@@ -47,19 +47,26 @@ internal class RankingScreen(
 
     private fun row() = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
 
+    /** Pill tabs: white when focused, translucent with bold text when selected. */
+    private fun paintPill(view: TextView) {
+        val focused = view.hasFocus()
+        view.background = TvStyle.shape(activity,
+            if (focused) android.graphics.Color.WHITE else if (view.isSelected) TvVisual.QUIET_SELECTED else TvVisual.QUIET,
+            radius = 999)
+        view.setTextColor(if (focused) TvStyle.background else if (view.isSelected) TvStyle.text else TvStyle.muted)
+        view.typeface = if (focused || view.isSelected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+    }
+
     private fun button(value: String, action: () -> Unit) =
         label(value, 14f).apply {
             id = View.generateViewId()
             isFocusable = true
             isClickable = true
             gravity = Gravity.CENTER
-            setPadding(dp(14), dp(7), dp(14), dp(7))
-            minHeight = dp(36)
-            fun paint() {
-                setTextColor(if (isSelected) TvStyle.accent else TvStyle.text)
-                background = TvStyle.card(activity, hasFocus(), isSelected)
-            }
-            setOnFocusChangeListener { _, _ -> paint() }
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            minHeight = dp(38)
+            fun paint() = paintPill(this)
+            setOnFocusChangeListener { _, focused -> paint(); TvMotion.focus(this, focused, 1.05f) }
             setOnClickListener { action() }
             paint()
         }
@@ -179,8 +186,7 @@ internal class RankingScreen(
         RankBoard.entries.forEachIndexed { i, b ->
             controls[i].isSelected = state.board == b
             controls[i].text = b.label + if (state.isRefreshing(b)) " …" else ""
-            controls[i].setTextColor(if (state.board == b) TvStyle.accent else TvStyle.text)
-            controls[i].background = TvStyle.card(activity, controls[i].hasFocus(), state.board == b)
+            paintPill(controls[i])
         }
         refreshButton.text = if (state.isRefreshing(state.board)) "读取中…" else "刷新"
         heading.text = "${state.board.label}热播榜"

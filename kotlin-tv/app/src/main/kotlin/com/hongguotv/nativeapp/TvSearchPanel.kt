@@ -33,8 +33,8 @@ internal class TvSearchPanel(
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
             setText(initial)
             setSelection(text.length)
-            background = TvStyle.shape(context, TvStyle.surface, TvStyle.outline)
-            setPadding(dp(14), 0, dp(12), 0)
+            background = TvStyle.shape(context, TvVisual.QUIET, radius = 14)
+            setPadding(dp(16), 0, dp(12), 0)
         }
     data class EditState(val draft: String, val words: List<String>, val word: Int, val recent: Int, val key: Int)
     private var lastKey = 0
@@ -102,10 +102,11 @@ internal class TvSearchPanel(
             minHeight = dp(36)
             setTextColor(TvStyle.text)
             setPadding(dp(4), dp(6), dp(4), dp(6))
-            background = TvStyle.card(context, false)
+            background = TvStyle.shape(context, TvVisual.QUIET)
             setOnFocusChangeListener { _, focused ->
-                background = TvStyle.shape(context, if (focused) TvStyle.text else TvStyle.surface, radius = 5)
+                background = TvStyle.shape(context, if (focused) android.graphics.Color.WHITE else TvVisual.QUIET)
                 setTextColor(if (focused) TvStyle.background else TvStyle.text)
+                TvMotion.focus(this, focused, 1.08f)
             }
             setOnClickListener(click)
         }
