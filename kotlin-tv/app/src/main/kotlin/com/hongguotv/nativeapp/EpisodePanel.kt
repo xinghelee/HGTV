@@ -51,10 +51,15 @@ class EpisodePanel(
             isFocusable = true
             isFocusableInTouchMode = true
             fun paint(focus: Boolean) {
-                background = TvStyle.card(activity, focus, active)
+                background = when {
+                    focus -> TvStyle.shape(activity, Color.WHITE)
+                    active -> TvStyle.brandGradient(activity, 12)
+                    else -> TvStyle.shape(activity, TvVisual.QUIET)
+                }
+                setTextColor(if (focus) TvStyle.background else TvStyle.text)
             }
             paint(false)
-            setOnFocusChangeListener { _, hasFocus -> paint(hasFocus) }
+            setOnFocusChangeListener { _, hasFocus -> paint(hasFocus); TvMotion.focus(this, hasFocus, 1.06f) }
             setOnClickListener { action() }
         }
 

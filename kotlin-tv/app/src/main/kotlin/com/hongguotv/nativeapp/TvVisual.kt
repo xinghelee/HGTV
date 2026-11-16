@@ -34,6 +34,41 @@ internal object TvVisual {
 
     fun backdrop(context: Context): Drawable = android.graphics.drawable.ColorDrawable(TvStyle.background)
 
+    /** Translucent fill for buttons resting on artwork or the dark background. */
+    const val QUIET = 0x1FFFFFFF
+    const val QUIET_SELECTED = 0x33FFFFFF
+
+    /** Primary call to action: brand gradient at rest, solid white when focused. */
+    fun primary(view: TextView, radius: Int = 999) {
+        val context = view.context
+        fun paint(focused: Boolean) {
+            view.background = if (focused) TvStyle.shape(context, Color.WHITE, radius = radius)
+                else TvStyle.brandGradient(context, radius)
+            view.setTextColor(if (focused) TvStyle.background else Color.WHITE)
+            view.typeface = Typeface.DEFAULT_BOLD
+        }
+        paint(view.hasFocus())
+        view.setOnFocusChangeListener { _, focused -> paint(focused); TvMotion.focus(view, focused, 1.06f) }
+    }
+
+    /** Rounded, slim progress bar used by the player HUD. */
+    fun progress(context: Context, track: Int = 0x40FFFFFF): Drawable {
+        val radius = 3 * context.resources.displayMetrics.density
+        fun round(color: Int) = android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius = radius }
+        val fill = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(TvStyle.BRAND_START, Color.parseColor("#FF8A4C"))).apply { cornerRadius = radius }
+        return android.graphics.drawable.LayerDrawable(arrayOf(
+            round(track),
+            android.graphics.drawable.ClipDrawable(round(0x66FFFFFF), android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL),
+            android.graphics.drawable.ClipDrawable(fill, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL),
+        )).apply {
+            setId(0, android.R.id.background)
+            setId(1, android.R.id.secondaryProgress)
+            setId(2, android.R.id.progress)
+        }
+    }
+
 }
 
 /** Keeps the complete label as accessible text; draws label and current value separately. */

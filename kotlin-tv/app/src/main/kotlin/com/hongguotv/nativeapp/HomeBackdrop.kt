@@ -39,6 +39,15 @@ internal class HomeBackdrop(private val target: View) {
         }.also { target.postDelayed(it, 140) }
     }
 
+    /** Shows [image]'s artwork once its cover finishes loading (covers arrive asynchronously). */
+    fun follow(image: android.widget.ImageView, attempt: Int = 0) {
+        val bitmap = (image.drawable as? BitmapDrawable)?.bitmap
+        if (bitmap != null) show(bitmap)
+        else if (attempt < 16) image.postDelayed({
+            if (image.isAttachedToWindow) follow(image, attempt + 1)
+        }, 250)
+    }
+
     fun clear() {
         pending?.let(target::removeCallbacks)
         pending = null

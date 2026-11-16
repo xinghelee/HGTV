@@ -545,16 +545,28 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+    // Translucent at rest, solid white with dark text and a slight lift when focused.
     private fun focusStyle(view: View, selected: Boolean = false) {
         view.id = View.generateViewId()
         view.isSelected = selected
         view.isFocusable = true
         view.isFocusableInTouchMode = true
+        var restingInk: Int? = null
         fun paint(focused: Boolean) {
-            view.background = TvStyle.card(this, focused, selected)
+            view.background = TvStyle.shape(this,
+                if (focused) Color.WHITE else if (selected) TvVisual.QUIET_SELECTED else TvVisual.QUIET)
+            (view as? TextView)?.let { label ->
+                if (focused) {
+                    if (restingInk == null) restingInk = label.currentTextColor
+                    label.setTextColor(TvStyle.background)
+                } else restingInk?.let { label.setTextColor(it); restingInk = null }
+            }
         }
         paint(false)
-        view.setOnFocusChangeListener { _, focused -> paint(focused) }
+        view.setOnFocusChangeListener { _, focused ->
+            paint(focused)
+            TvMotion.focus(view, focused, 1.05f)
+        }
     }
 
     // 统一创建可点击的文字按钮；将界面样式、焦点效果与业务回调连接起来。
@@ -2634,44 +2646,56 @@ class MainActivity : Activity() {
         screen = "detail"
         val data = detail ?: return showCatalog()
         val body = base("剧集详情")
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
-        val content = column()
+        body.clipChildren = false
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; clipChildren = false; clipToPadding = false }
+        val content = column().apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), 0, dp(8), dp(24)) }
         scroll.addView(content)
         body.addView(scroll, lp(-1, 0).apply { weight = 1f })
         val hero = row()
         hero.gravity = Gravity.TOP
-        hero.setPadding(0, dp(12), 0, dp(12))
+        hero.clipChildren = false
+        hero.setPadding(0, dp(16), 0, dp(16))
         val image = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            background = TvStyle.shape(this@MainActivity, TvStyle.surface, radius = 7)
+            background = TvStyle.shape(this@MainActivity, TvStyle.surface, radius = 16)
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) =
+                    outline.setRoundRect(0, 0, view.width, view.height, 16 * resources.displayMetrics.density)
+            }
             clipToOutline = true
+            elevation = dp(18).toFloat()
         }
         hero.addView(
             image,
-            lp(dp(123), (dp(123) / TvStyle.POSTER_ASPECT).roundToInt()).apply {
-                rightMargin = dp(24)
+            lp(dp(170), (dp(170) / TvStyle.POSTER_ASPECT).roundToInt()).apply {
+                rightMargin = dp(36)
             },
         )
         loadCover(image, data.series.cover)
-        val info = column()
+        // The page sits on a blurred, darkened copy of the cover.
+        HomeBackdrop(root).follow(image)
+        val info = column().apply { clipChildren = false; clipToPadding = false }
         hero.addView(info, lp(0, -2).apply { weight = 1f })
         info.addView(
-            text(data.series.title, 26f).apply {
+            text(data.series.title, 34f).apply {
                 setTypeface(null, Typeface.BOLD)
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
+                setLineSpacing(0f, 1.1f)
+                setShadowLayer(dp(8).toFloat(), 0f, dp(2).toFloat(), 0x99000000.toInt())
             }
         )
         info.addView(
-            text("${data.episodes.size} 集  ·  ${data.series.tags}", 13f, TvStyle.muted).apply {
+            text("${data.episodes.size} 集  ·  ${data.series.tags}", 15f, TvStyle.muted).apply {
                 maxLines = 1
-                setPadding(0, dp(8), 0, dp(8))
+                setPadding(0, dp(12), 0, dp(10))
             }
         )
         val description = data.series.description.ifBlank { "选择剧集开始观看" }
         val synopsis =
-            text(description, 14f, muted).apply {
-                setLineSpacing(dp(3).toFloat(), 1f)
+            text(description, 15f, 0xCCFFFFFF.toInt()).apply {
+                setLineSpacing(dp(4).toFloat(), 1f)
+                maxWidth = dp(760)
                 maxLines = if (synopsisExpanded) 20 else 2
                 ellipsize = TextUtils.TruncateAt.END
             }
@@ -2695,8 +2719,9 @@ class MainActivity : Activity() {
         }
         producerButton.textSize = 13f
         producerButton.isEnabled = false
-        val actions = row()
-        actions.setPadding(0, dp(12), 0, 0)
+        (producerButton.layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(12)
+        val actions = row().apply { clipChildren = false; clipToPadding = false }
+        actions.setPadding(0, dp(18), 0, 0)
         info.addView(actions)
         val progress = detailProgress(data)
         val resumeIndex =
@@ -2729,7 +2754,7 @@ class MainActivity : Activity() {
         lateinit var detailComments: TextView
         detailComments =
             addButton(actions, "评论 · 第 ${episodeIndex+1} 集") { social.showComments(detailComments) }
-        val secondary = row().apply { setPadding(0, dp(8), 0, 0) }
+        val secondary = row().apply { setPadding(0, dp(10), 0, 0); clipChildren = false; clipToPadding = false }
         info.addView(secondary)
         accountFavoriteButton =
             addButton(secondary, detailFavoriteLabel(data.series.id)) {
@@ -2758,8 +2783,9 @@ class MainActivity : Activity() {
                 scroll.post { scroll.scrollTo(0, previousScroll) }
             }
         content.addView(hero)
-        content.addView(text("选集分组 · 共 ${data.episodes.size} 集", 12f, muted).apply {
-            setPadding(0, dp(12), 0, dp(6))
+        content.addView(text("选集分组 · 共 ${data.episodes.size} 集", 20f).apply {
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, dp(16), 0, dp(8))
         })
         val groupRow = row()
         groupRow.gravity = Gravity.CENTER_VERTICAL
@@ -2789,13 +2815,13 @@ class MainActivity : Activity() {
                 minWidth = dp(88)
                 setPadding(dp(14), 0, dp(14), 0)
                 fun paintGroup() {
-                    setTextColor(if (isSelected) accent else if (hasFocus()) white else muted)
-                    setTypeface(null, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                    setTextColor(if (hasFocus()) TvStyle.background else if (isSelected) white else muted)
+                    setTypeface(null, if (isSelected || hasFocus()) Typeface.BOLD else Typeface.NORMAL)
                     background = TvStyle.shape(this@MainActivity,
-                        if (isSelected || hasFocus()) TvStyle.raised else Color.TRANSPARENT,
-                        if (hasFocus()) white else Color.TRANSPARENT, radius = 20)
+                        if (hasFocus()) Color.WHITE else if (isSelected) TvVisual.QUIET_SELECTED else Color.TRANSPARENT,
+                        radius = 999)
                 }
-                setOnFocusChangeListener { _, _ -> paintGroup() }
+                setOnFocusChangeListener { _, focused -> paintGroup(); TvMotion.focus(this, focused, 1.05f) }
                 paintGroup()
                 groupStrip.addView(this, lp(-2, dp(40)).apply { rightMargin = dp(6) })
             }
@@ -2814,7 +2840,7 @@ class MainActivity : Activity() {
             }
         content.addView(groupRow)
         content.addView(
-            text("高亮为当前集 · 上次为续播位置 · 方向键选择，确定播放", 12f, muted).apply { setPadding(0, 0, 0, dp(6)) }
+            text("高亮为当前集 · 上次为续播位置 · 方向键选择，确定播放", 12f, muted).apply { setPadding(0, 0, 0, dp(10)) }
         )
         val episodes = mutableListOf<View>()
         (group * 20 until minOf((group + 1) * 20, data.episodes.size))
@@ -2842,8 +2868,9 @@ class MainActivity : Activity() {
                                 else 0,
                             )
                         }
-                    item.textSize = 12f
+                    item.textSize = 14f
                     item.includeFontPadding = false
+                    if (index == episodeIndex) TvVisual.primary(item, radius = 12)
                     item.setPadding(dp(2), dp(3), dp(2), dp(3))
                     item.contentDescription = "第 ${index+1} 集"
                     line.addView(
@@ -2864,7 +2891,8 @@ class MainActivity : Activity() {
                         },
                     )
                 }
-                content.addView(line, lp(-1, dp(60)))
+                line.clipChildren = false
+                content.addView(line, lp(-1, dp(62)))
             }
         episodes.forEachIndexed { i, v ->
             v.nextFocusLeftId = if (i % 10 == 0) v.id else episodes[i - 1].id
@@ -2874,11 +2902,13 @@ class MainActivity : Activity() {
             v.nextFocusDownId = if (i + 10 < episodes.size) episodes[i + 10].id else v.id
         }
         val primary = listOf(play, detailComments)
-        play.setTextColor(accent)
+        play.textSize = 17f
+        play.setPadding(dp(30), dp(10), dp(30), dp(10))
+        TvVisual.primary(play)
         val secondaryActions = listOf(accountFavoriteButton!!, synopsisButton)
         secondaryActions.forEach {
-            it.textSize = 13f
-            it.setTextColor(muted)
+            it.textSize = 14f
+            it.setTextColor(0xCCFFFFFF.toInt())
         }
         producerButton.nextFocusDownId = play.id
         primary.forEachIndexed { i, v ->
@@ -3110,13 +3140,14 @@ class MainActivity : Activity() {
             view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> applyVideoRotation() }
             view.post { if (playerView === view) applyVideoRotation() }
             persistentTime = text("", 12f, Color.WHITE)
-            persistentBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(accent) }
+            persistentBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progressDrawable = TvVisual.progress(this@MainActivity) }
             persistentProgress = column().apply {
                 isFocusable = false
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-                setPadding(dp(12), dp(4), dp(12), dp(6))
-                setBackgroundColor(Color.argb(160, 0, 0, 0))
-                addView(persistentTime); addView(persistentBar, lp(-1, dp(3)))
+                setPadding(dp(widthDp() * .05f), dp(18), dp(widthDp() * .05f), dp(14))
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                    intArrayOf(Color.argb(170, 0, 0, 0), Color.TRANSPARENT))
+                addView(persistentTime); addView(persistentBar, lp(-1, dp(4)).apply { topMargin = dp(6) })
                 visibility = View.GONE
             }
             root.addView(persistentProgress, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
@@ -3126,8 +3157,8 @@ class MainActivity : Activity() {
                 format24Hour = "HH:mm"
                 textSize = 18f
                 setTextColor(Color.WHITE)
-                setPadding(dp(10), dp(5), dp(10), dp(5))
-                background = rounded(Color.argb(150, 11, 15, 21))
+                setPadding(dp(16), dp(6), dp(16), dp(6))
+                background = TvStyle.shape(this@MainActivity, Color.argb(110, 0, 0, 0), radius = 999)
                 isFocusable = false
             }.also { clock ->
                 root.addView(clock, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
@@ -3139,40 +3170,44 @@ class MainActivity : Activity() {
                 column().apply {
                     setPadding(
                         dp(widthDp() * .05f),
-                        dp(20),
+                        dp(90),
                         dp(widthDp() * .05f),
-                        (resources.displayMetrics.heightPixels * .05f).toInt(),
+                        (resources.displayMetrics.heightPixels * .06f).toInt(),
                     )
+                    clipChildren = false
+                    clipToPadding = false
                     background =
                         GradientDrawable(
                             GradientDrawable.Orientation.TOP_BOTTOM,
-                            intArrayOf(Color.TRANSPARENT, Color.argb(240, 11, 15, 21)),
+                            intArrayOf(Color.TRANSPARENT, Color.argb(150, 0, 0, 0), Color.argb(235, 0, 0, 0)),
                         )
                 }
             playbackTitle =
-                text("", 23f, Color.WHITE).apply {
+                text("", 30f, Color.WHITE).apply {
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
                     setTypeface(null, Typeface.BOLD)
+                    setShadowLayer(dp(6).toFloat(), 0f, dp(2).toFloat(), 0x99000000.toInt())
                 }
             hud.addView(playbackTitle)
-            playbackText = text("", 15f, Color.LTGRAY).apply { setPadding(0, dp(10), 0, dp(9)) }
+            playbackText = text("", 15f, 0xCCFFFFFF.toInt()).apply { setPadding(0, dp(10), 0, dp(14)) }
             hud.addView(playbackText)
             progressBar =
                 ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
                     max = 1000
-                    progressTintList = android.content.res.ColorStateList.valueOf(accent)
-                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(surface)
+                    progressDrawable = TvVisual.progress(this@MainActivity)
                 }
-            hud.addView(progressBar, lp(-1, dp(4)))
+            hud.addView(progressBar, lp(-1, dp(6)))
             hud.addView(
-                text("确认 暂停/播放    左右 快退/快进    ↓ 选集    ↑ 操作菜单    菜单 更多", 13f, Color.LTGRAY).apply {
-                    setPadding(0, dp(12), 0, 0)
+                text("确认 暂停/播放    左右 快退/快进    ↓ 选集    ↑ 操作菜单    菜单 更多", 13f, 0x99FFFFFF.toInt()).apply {
+                    setPadding(0, dp(14), 0, 0)
                 }
             )
             controls =
                 column().apply {
-                    setPadding(0, dp(12), 0, 0)
+                    clipChildren = false
+                    clipToPadding = false
+                    setPadding(0, dp(14), 0, 0)
                     visibility = View.GONE
                 }
             hud.addView(controls)
