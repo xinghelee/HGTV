@@ -6,6 +6,7 @@ package com.hongguotv.nativeapp
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -1182,7 +1183,7 @@ class MainActivity : Activity() {
                     nav[tab],
                     repository::searchSuggestions,
                     ::runSearch,
-
+                    if (VoiceSearch.available(this)) ::startVoiceSearch else null,
                 )
             tvSearchPanel = panel
             searchEditState?.let { panel.restore(it) }
@@ -2466,6 +2467,28 @@ class MainActivity : Activity() {
     }
 
     // 统一接收键盘、历史等来源的搜索词，保存历史并重置到第一页。
+    private fun startVoiceSearch() {
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(VoiceSearch.intent(), VoiceSearch.REQUEST)
+        } catch (_: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, "这台电视没有可用的语音输入", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @Deprecated("Activity result API is not used by this plain Activity")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != VoiceSearch.REQUEST || resultCode != RESULT_OK) return
+        val spoken = VoiceSearch.text(data) ?: return
+        // Run after onResume has restored the page, so the search lands on the live screen.
+        main.post {
+            if (screen != "catalog") return@post
+            tvSearchPanel?.takeIf { tab == 7 }?.voiceResult(spoken) ?: runSearch(spoken)
+        }
+    }
+
     private fun runSearch(value: String) {
         val clean = value.trim().take(80)
         if (clean.isEmpty()) {
@@ -4946,6 +4969,11 @@ class MainActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) gradualPreloader?.yieldToUser()
+        // A remote's search/mic key opens voice search from any browsing page.
+        if (screen == "catalog" && event.keyCode == KeyEvent.KEYCODE_SEARCH && VoiceSearch.available(this)) {
+            if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) startVoiceSearch()
+            return true
+        }
         if (screen == "catalog" && event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) goBack()
             return true

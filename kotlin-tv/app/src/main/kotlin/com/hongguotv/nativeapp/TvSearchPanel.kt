@@ -18,6 +18,7 @@ internal class TvSearchPanel(
     private val upper: View,
     fetch: (String) -> List<String>,
     private val search: (String) -> Unit,
+    private val voice: (() -> Unit)? = null,
 ) : LinearLayout(context) {
     val input =
         EditText(context).apply {
@@ -115,6 +116,13 @@ internal class TvSearchPanel(
             .hideSoftInputFromWindow(input.windowToken, 0)
     }
 
+    /** Fills the box with recognized speech and searches it straight away. */
+    fun voiceResult(value: String) {
+        input.setText(value)
+        input.setSelection(input.text.length)
+        submit(value)
+    }
+
     // 提交前清理空白和隐藏输入法；非空关键词通过回调交给主页面搜索。
     private fun submit(value: String = input.text.toString()) {
         value
@@ -207,7 +215,7 @@ internal class TvSearchPanel(
                     (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
                         .showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
                 },
-            )
+            ) + listOfNotNull(voice?.let { start -> action("🎤 语音") { hideKeyboard(); start() } })
         actions.chunked(3).forEach { row ->
             val line = LinearLayout(context)
             row.forEach {
