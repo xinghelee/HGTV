@@ -6,7 +6,6 @@ package com.hongguotv.nativeapp
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -2489,29 +2488,50 @@ class MainActivity : Activity() {
         showCatalog(load = false)
     }
 
-    // 统一接收键盘、历史等来源的搜索词，保存历史并重置到第一页。
+    private var voiceOverlay: VoiceSearchOverlay? = null
+
     private fun startVoiceSearch() {
-        try {
-            @Suppress("DEPRECATION")
-            startActivityForResult(VoiceSearch.intent(), VoiceSearch.REQUEST)
-        } catch (_: android.content.ActivityNotFoundException) {
-            Toast.makeText(this, "这台电视没有可用的语音输入", Toast.LENGTH_SHORT).show()
+        if (voiceOverlay != null) return
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), VoiceSearch.PERMISSION_REQUEST)
+            return
+        }
+        val returnFocus = root.findFocus()
+        lateinit var overlay: VoiceSearchOverlay
+        overlay = VoiceSearchOverlay(
+            this,
+            onResult = { spoken ->
+                if (screen == "catalog") tvSearchPanel?.takeIf { tab == 7 }?.voiceResult(spoken) ?: runSearch(spoken)
+            },
+            onClose = {
+                if (voiceOverlay === overlay) voiceOverlay = null
+                root.removeView(overlay)
+                returnFocus?.takeIf { it.isAttachedToWindow }?.requestFocus()
+            },
+        )
+        voiceOverlay = overlay
+        root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        overlay.requestFocus()
+        overlay.start()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != VoiceSearch.PERMISSION_REQUEST) return
+        if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            main.post { if (screen == "catalog") startVoiceSearch() }
+        } else {
+            val blocked = !shouldShowRequestPermissionRationale(android.Manifest.permission.RECORD_AUDIO)
+            Toast.makeText(
+                this,
+                if (blocked) "麦克风权限已关闭，请在 设置 › 应用 › 红果短剧 › 权限 中开启"
+                else "需要麦克风权限才能语音搜索",
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
 
-    @Deprecated("Activity result API is not used by this plain Activity")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        @Suppress("DEPRECATION")
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != VoiceSearch.REQUEST || resultCode != RESULT_OK) return
-        val spoken = VoiceSearch.text(data) ?: return
-        // Run after onResume has restored the page, so the search lands on the live screen.
-        main.post {
-            if (screen != "catalog") return@post
-            tvSearchPanel?.takeIf { tab == 7 }?.voiceResult(spoken) ?: runSearch(spoken)
-        }
-    }
-
+    // 统一接收键盘、历史等来源的搜索词，保存历史并重置到第一页。
     private fun runSearch(value: String) {
         val clean = value.trim().take(80)
         if (clean.isEmpty()) {
@@ -5015,6 +5035,7 @@ class MainActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) gradualPreloader?.yieldToUser()
+        voiceOverlay?.let { return it.handleKey(event) }
         // A remote's search/mic key opens voice search from any browsing page.
         if (screen == "catalog" && event.keyCode == KeyEvent.KEYCODE_SEARCH && VoiceSearch.available(this)) {
             if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) startVoiceSearch()
@@ -5162,6 +5183,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        voiceOverlay?.cancel()
         gradualPreloader?.pause()
         stallGuard.suspendObservation()
         cancelNextSeason()

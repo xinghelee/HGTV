@@ -3,10 +3,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-feature android:name="android.software.leanback" android:required="false"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <queries>
-        <!-- Lets the search screen detect the TV's speech recognizer on Android 11+. -->
-        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH"/></intent>
+        <!-- Lets voice search bind the TV's speech recognition service on Android 11+. -->
+        <intent><action android:name="android.speech.RecognitionService"/></intent>
     </queries>
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <application android:label="${appLabel}" android:theme="@style/AppTheme" android:icon="@mipmap/ic_launcher" android:banner="@mipmap/tv_banner" android:allowBackup="false" android:enableOnBackInvokedCallback="false" android:usesCleartextTraffic="true" android:networkSecurityConfig="@xml/network_security_config" android:supportsRtl="true">

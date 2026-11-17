@@ -2,8 +2,8 @@
 package com.hongguotv.nativeapp
 
 import android.app.Activity
-import android.content.Intent
-import android.speech.RecognizerIntent
+import android.os.Bundle
+import android.speech.SpeechRecognizer
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -24,13 +24,14 @@ class VoiceSearchTest {
         else if (view is TextView) listOf(view) else emptyList()
 
     private fun result(vararg spoken: String) =
-        Intent().putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, arrayListOf(*spoken))
+        Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf(*spoken)) }
 
     @Test fun recognizedTextDropsSentencePunctuation() {
         assertEquals("全球死考", VoiceSearch.text(result(" 全球死考。")))
         assertEquals("凡人百世书", VoiceSearch.text(result("凡人百世书？")))
         assertNull(VoiceSearch.text(result("。")))
-        assertNull(VoiceSearch.text(null))
+        assertNull(VoiceSearch.text(null as Bundle?))
+        assertEquals("没听清，请再说一次", VoiceSearch.errorMessage(SpeechRecognizer.ERROR_NO_MATCH))
     }
 
     @Test fun voiceButtonOnlyAppearsWhenARecognizerIsOffered() {
