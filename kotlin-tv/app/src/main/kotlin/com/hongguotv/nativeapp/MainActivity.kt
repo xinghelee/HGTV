@@ -2327,20 +2327,36 @@ class MainActivity : Activity() {
         parent.addView(layout, lp(-1, 0).apply { weight = 1f })
         val sidebar = column()
         layout.addView(sidebar, lp(dp(170), -1).apply { rightMargin = dp(22) })
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; isFillViewport = false }
-        val content = column().apply {
-            setPadding(dp(20), dp(14), dp(20), dp(14))
+        // The panel frames a fading scroll area so long pages no longer end in a hard cut.
+        val panel = android.widget.FrameLayout(this).apply {
             background = TvVisual.panel(this@MainActivity)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
         }
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isFillViewport = false
+            isVerticalFadingEdgeEnabled = true
+            setFadingEdgeLength(dp(36))
+        }
+        val content = column().apply { setPadding(dp(20), dp(14), dp(20), dp(14)) }
         scroll.addView(content, android.widget.FrameLayout.LayoutParams(-1, -2))
-        layout.addView(scroll, lp(0, -1).apply { weight = 1f })
-        val categories = listOf("检查更新", "播放", "外观与操作", "账户", "关于应用")
+        panel.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -2))
+        layout.addView(panel, lp(0, -2).apply { weight = 1f })
+        val categories = listOf("版本更新", "播放", "外观与操作", "账户", "关于应用")
+        val categoryGlyphs = listOf(15, 8, 16, 3, 17)
+        val categoryNotes = listOf(
+            "检查新版本并在电视上直接安装，收藏与观看记录保留。",
+            "清晰度、倍速、弹幕与连播等播放偏好。",
+            "配色主题、启动页面与首页行为。",
+            "红果账户登录，以及用手机搜索和遥控。",
+            "版本信息与开源许可。",
+        )
         val entries = mutableListOf<View>()
         fun setting(label: String, action: () -> Unit): TextView {
             val view = SettingsValueView(this).apply {
                 text = label
                 textSize = 16f
-                minimumHeight = dp(46)
+                minimumHeight = dp(52)
                 focusStyle(this)
                 setPadding(dp(20), dp(8), dp(18), dp(8))
                 background = TvVisual.row(this@MainActivity, false)
@@ -2350,19 +2366,20 @@ class MainActivity : Activity() {
                 }
                 setOnClickListener { action() }
             }
-            content.addView(view, lp(-1, -2).apply { bottomMargin = dp(4) })
+            content.addView(view, lp(-1, -2).apply { bottomMargin = dp(6) })
             entries += view
             return view
         }
         fun toggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
             val view = row().apply {
                 focusStyle(this)
-                setPadding(dp(20), dp(11), dp(14), dp(11))
-                minimumHeight = dp(46)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(20), dp(8), dp(14), dp(8))
+                minimumHeight = dp(52)
                 background = TvVisual.row(this@MainActivity, false)
                 setOnFocusChangeListener { _, focused -> background = TvVisual.row(this@MainActivity, focused) }
             }
-            view.addView(text(label, 15f), lp(0, -2).apply { weight = 1f })
+            view.addView(text(label, 16f), lp(0, -2).apply { weight = 1f })
             val control = SettingsSwitch(this).apply {
                 isChecked = checked
                 isClickable = false
@@ -2380,7 +2397,7 @@ class MainActivity : Activity() {
             fun describe() { view.contentDescription = "$label，${if (control.isChecked) "开启" else "关闭"}，按确定切换" }
             describe()
             view.setOnClickListener { control.isChecked = !control.isChecked; change(control.isChecked); describe() }
-            content.addView(view, lp(-1, -2).apply { bottomMargin = dp(8) })
+            content.addView(view, lp(-1, -2).apply { bottomMargin = dp(6) })
             entries += view
         }
         lateinit var render: (Int) -> Unit
@@ -2392,12 +2409,14 @@ class MainActivity : Activity() {
                 tag = "settings-category-$index"
                 minHeight = dp(52)
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(22), dp(10), dp(12), dp(10))
+                setPadding(dp(18), dp(10), dp(12), dp(10))
+                compoundDrawablePadding = dp(12)
+                setCompoundDrawables(TvGlyph(categoryGlyphs[index], dp(20), muted).apply { setBounds(0, 0, dp(20), dp(20)) }, null, null, null)
                 sidebar.addView(this, lp(-1, -2).apply { bottomMargin = dp(8) })
                 setOnFocusChangeListener { _, focused ->
                     if (focused) render(index)
                     background = TvVisual.row(this@MainActivity, focused, settingsGroup == index, category = true)
-                    setTextColor(if (focused || settingsGroup == index) TvVisual.focusedValue else muted)
+                    paintCategory(this, focused || settingsGroup == index, settingsGroup == index)
                 }
             }
         }
@@ -2408,18 +2427,17 @@ class MainActivity : Activity() {
             settingsAccountStatus = null
             content.removeAllViews()
             scroll.scrollTo(0, 0)
-            content.addView(text(categories[index], 20f).apply { setTypeface(null, Typeface.BOLD) })
-            content.addView(View(this).apply { setBackgroundColor(TvStyle.outline) }, lp(-1, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(10) })
+            content.addView(text(categories[index], 22f).apply { setTypeface(null, Typeface.BOLD) })
+            content.addView(text(categoryNotes[index], 14f, muted).apply { setPadding(0, dp(6), 0, 0) })
+            content.addView(View(this).apply { setBackgroundColor(TvStyle.outline) }, lp(-1, dp(1)).apply { topMargin = dp(16); bottomMargin = dp(14) })
             when (index) {
                 0 -> {
-                    content.addView(text("当前版本  ·  ${BuildConfig.VERSION_NAME}", 17f).apply {
-                        setPadding(0, dp(4), 0, dp(12))
-                    })
-                    content.addView(text("主动检查新版本，查看更新并下载安装。", 15f, muted).apply {
-                        setPadding(0, 0, 0, dp(16))
-                    })
+                    content.addView(versionCard(), lp(-1, -2).apply { bottomMargin = dp(14) })
                     lateinit var updates: TextView
-                    updates = setting("检查更新") { updater.show(updates) }
+                    fun updateLabel(state: String) = "检查更新  ·  ${state.ifBlank { "立即检查" }}"
+                    updates = setting(updateLabel(updater.summary)) { updater.show(updates) }
+                    updater.onSummary = { state -> if (updates.isAttachedToWindow) updates.text = updateLabel(state) }
+                    toggle("自动检查并下载更新", updater.automatic) { updater.automatic = it }
                 }
                 1 -> {
                     lateinit var qualityButton: TextView
@@ -2499,13 +2517,39 @@ class MainActivity : Activity() {
                 view.nextFocusUpId = buttons.getOrNull(category - 1)?.id ?: nav[tab].id
                 view.nextFocusDownId = buttons.getOrNull(category + 1)?.id ?: view.id
                 view.background = TvVisual.row(this@MainActivity, view.hasFocus(), category == index, category = true)
-                view.setTextColor(if (view.hasFocus() || category == index) TvVisual.focusedValue else muted)
+                paintCategory(view, view.hasFocus() || category == index, category == index)
             }
             nav.forEach { it.nextFocusDownId = buttons[index].id }
         }
         render(settingsGroup)
         parent.addView(text("↑↓ 选择  ·  → 进入选项  ·  ← 返回分类  ·  返回：分类 / 顶部导航", 12f, Color.rgb(112, 122, 140)).apply { setPadding(0, dp(12), 0, 0) })
         settingsRows.getOrNull(settingsPositions[settingsGroup].coerceAtMost(settingsRows.lastIndex))?.requestFocus()
+    }
+
+    private fun paintCategory(view: TextView, highlighted: Boolean, selected: Boolean) {
+        view.setTextColor(if (highlighted) TvVisual.focusedValue else muted)
+        (view.compoundDrawables[0] as? TvGlyph)?.let {
+            it.ink = if (selected) TvVisual.accent else if (highlighted) TvVisual.focusedValue else muted
+            it.invalidateSelf()
+        }
+    }
+
+    /** App icon, name and version shown at the top of the 版本更新 page. */
+    private fun versionCard(): View {
+        val card = row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            background = TvStyle.shape(this@MainActivity, TvStyle.raised, radius = 14)
+        }
+        card.addView(ImageView(this).apply {
+            setImageDrawable(applicationInfo.loadIcon(packageManager))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, lp(dp(64), dp(64)).apply { rightMargin = dp(18) })
+        val names = column()
+        names.addView(text(applicationInfo.loadLabel(packageManager).toString(), 22f).apply { setTypeface(null, Typeface.BOLD) })
+        names.addView(text("版本 ${BuildConfig.VERSION_NAME}  ·  构建 ${BuildConfig.VERSION_CODE}", 15f, muted).apply { setPadding(0, dp(4), 0, 0) })
+        card.addView(names, lp(0, -2).apply { weight = 1f })
+        return card
     }
 
     private fun saveSearchDraft() {
@@ -2525,6 +2569,7 @@ class MainActivity : Activity() {
     }
 
     private var voiceOverlay: VoiceSearchOverlay? = null
+    private var voiceClosedAt = 0L
 
     private fun startVoiceSearch() {
         if (voiceOverlay != null) return
@@ -2541,9 +2586,11 @@ class MainActivity : Activity() {
             },
             onClose = {
                 if (voiceOverlay === overlay) voiceOverlay = null
+                voiceClosedAt = android.os.SystemClock.uptimeMillis()
                 root.removeView(overlay)
                 returnFocus?.takeIf { it.isAttachedToWindow }?.requestFocus()
             },
+            onPhoneInput = { phoneConsole.show(returnFocus) },
         )
         voiceOverlay = overlay
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
@@ -5126,6 +5173,12 @@ class MainActivity : Activity() {
         }
         if (event.action == KeyEvent.ACTION_DOWN) gradualPreloader?.yieldToUser()
         voiceOverlay?.let { return it.handleKey(event) }
+        // The overlay closes on BACK press; swallow that press's release so the page stays put.
+        if (key == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP && voiceClosedAt != 0L &&
+            android.os.SystemClock.uptimeMillis() - voiceClosedAt < 1500) {
+            voiceClosedAt = 0L
+            return true
+        }
         // A remote's search/mic key opens voice search from any browsing page.
         if (screen == "catalog" && event.keyCode == KeyEvent.KEYCODE_SEARCH && VoiceSearch.available(this)) {
             if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) startVoiceSearch()

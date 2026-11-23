@@ -18,6 +18,10 @@ internal class TvGlyph(private val kind: Int, private val size: Int, var ink: In
             12 -> { c.drawArc(3f,3f,21f,21f,135f,270f,false,pen); line(12f,12f,17f,7f); c.drawCircle(12f,12f,1f,pen) }
             13 -> { c.drawRoundRect(2f,4f,22f,20f,2f,2f,pen); line(5f,9f,11f,9f); line(15f,9f,19f,9f); line(8f,15f,17f,15f) }
             14 -> { line(3f,4f,21f,4f,21f,17f,10f,17f,5f,21f,5f,17f,3f,17f,3f,4f); line(7f,9f,17f,9f); line(7f,13f,13f,13f) }
+            // 15 update (arrow into tray), 16 sliders, 17 info.
+            15 -> { line(12f,3f,12f,15f); line(7f,10f,12f,15f,17f,10f); line(4f,15f,4f,20f,20f,20f,20f,15f) }
+            16 -> { line(4f,7f,20f,7f); line(4f,17f,20f,17f); c.drawCircle(9f,7f,2.5f,pen); c.drawCircle(15f,17f,2.5f,pen) }
+            17 -> { c.drawCircle(12f,12f,9f,pen); line(12f,11f,12f,17f); c.drawPoint(12f,7.5f,pen) }
             0 -> { line(3f,11f,12f,3f,21f,11f); line(5f,10f,5f,21f,10f,21f,10f,15f,14f,15f,14f,21f,19f,21f,19f,10f) }
             1 -> { for(x in listOf(4f,14f)) for(y in listOf(4f,14f)) c.drawRoundRect(x,y,x+6,y+6,1f,1f,pen) }
             8 -> { c.drawCircle(12f,12f,9f,pen); line(10f,8f,16f,12f,10f,16f,10f,8f) }

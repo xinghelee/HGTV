@@ -59,7 +59,7 @@ internal object VoiceSearch {
     fun errorMessage(code: Int): String = when (code) {
         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没听清，请再说一次"
         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER ->
-            "网络不通，语音识别暂不可用"
+            "连不上语音服务，电视需要能访问 Google"
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "没有麦克风权限"
         SpeechRecognizer.ERROR_AUDIO -> "麦克风不可用，请检查遥控器连接"
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "语音服务正忙，请稍后再试"
@@ -69,17 +69,26 @@ internal object VoiceSearch {
 
 /**
  * Full-screen listening sheet: a pulsing brand orb that follows the voice level, the live
- * transcript underneath, and a quiet hint. BACK cancels, OK retries after an error.
+ * transcript underneath, and a quiet hint. BACK always closes it; after an error the sheet
+ * offers 重试 / 用手机输入 / 返回. Watchdogs turn a silent recognizer (e.g. Google's TV
+ * service without network access to Google) into a visible error instead of endless animation.
  */
 internal class VoiceSearchOverlay(
     context: Context,
     private val onResult: (String) -> Unit,
     private val onClose: () -> Unit,
+    private val onPhoneInput: (() -> Unit)? = null,
 ) : FrameLayout(context) {
     private enum class State { PREPARING, LISTENING, PROCESSING, ERROR, DONE }
 
     private var state = State.PREPARING
     private var recognizer: SpeechRecognizer? = null
+    private var heardSpeech = false
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val watchdog = Runnable { timeout() }
+    private val actions = LinearLayout(context).apply { gravity = Gravity.CENTER; visibility = View.GONE }
+    private val actionLabels = mutableListOf<TextView>()
+    private var selected = 0
     private val orb = VoiceOrb(context)
     private val status = label(26f, TvStyle.text)
     private val transcript = label(44f, TvStyle.text, bold = true).apply {
@@ -101,12 +110,20 @@ internal class VoiceSearchOverlay(
         column.addView(orb, LinearLayout.LayoutParams(dp(260), dp(260)))
         column.addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(8) })
         column.addView(transcript, LinearLayout.LayoutParams(dp(900), -2).apply { topMargin = dp(18) })
+        val choices = listOfNotNull("重试", onPhoneInput?.let { "用手机输入" }, "返回")
+        choices.forEach { name ->
+            val chip = label(18f, TvStyle.text).apply { text = name; setPadding(dp(28), dp(11), dp(28), dp(11)) }
+            actions.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8); rightMargin = dp(8) })
+            actionLabels += chip
+        }
+        column.addView(actions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(28) })
         addView(column, LayoutParams(-2, -2, Gravity.CENTER))
         addView(hint, LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(48) })
     }
 
     fun start() {
         recognizer?.destroy()
+        heardSpeech = false
         transcript.setTextColor(TvStyle.muted)
         transcript.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
         transcript.text = "例如：“凡人百世书”"
@@ -122,6 +139,25 @@ internal class VoiceSearchOverlay(
             .onFailure { Log.w(TAG, "startListening failed", it); show(State.ERROR, "语音识别启动失败") }
     }
 
+    /** Re-armed on every state change; fires only if the recognizer goes quiet. */
+    private fun arm(ms: Long) {
+        handler.removeCallbacks(watchdog)
+        if (ms > 0) handler.postDelayed(watchdog, ms)
+    }
+
+    private fun timeout() {
+        val message = when (state) {
+            State.PREPARING -> "语音服务没有响应，电视需要能访问 Google"
+            State.LISTENING -> if (heardSpeech) "识别超时，请再说一次" else "没有听到声音，请按住遥控器语音键或靠近麦克风"
+            State.PROCESSING -> "识别超时，电视需要能访问 Google"
+            else -> return
+        }
+        Log.w(TAG, "watchdog timeout in $state")
+        release()
+        if (transcript.currentTextColor == TvStyle.muted) transcript.text = ""
+        show(State.ERROR, message)
+    }
+
     /** Stops listening and removes the sheet without searching. */
     fun cancel() {
         if (state == State.DONE) return
@@ -131,13 +167,20 @@ internal class VoiceSearchOverlay(
     }
 
     fun handleKey(event: KeyEvent): Boolean {
+        val down = event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
         val up = event.action == KeyEvent.ACTION_UP && !event.isCanceled
         when (event.keyCode) {
-            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> if (up) cancel()
+            // Close on press: while the mic is open some TVs mark the release as canceled.
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> if (down) cancel()
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT ->
+                if (down && state == State.ERROR) {
+                    val step = if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1
+                    select((selected + step).coerceIn(0, actionLabels.lastIndex))
+                }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
             KeyEvent.KEYCODE_SEARCH, KeyEvent.KEYCODE_VOICE_ASSIST ->
                 if (up) when (state) {
-                    State.ERROR -> start()
+                    State.ERROR -> activate(if (event.keyCode == KeyEvent.KEYCODE_SEARCH || event.keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) 0 else selected)
                     State.LISTENING -> runCatching { recognizer?.stopListening() }
                     else -> Unit
                 }
@@ -146,12 +189,31 @@ internal class VoiceSearchOverlay(
         return true
     }
 
+    private fun activate(index: Int) {
+        when (actionLabels.getOrNull(index)?.text?.toString()) {
+            "重试" -> start()
+            "用手机输入" -> { cancel(); onPhoneInput?.invoke() }
+            else -> cancel()
+        }
+    }
+
+    private fun select(index: Int) {
+        selected = index
+        actionLabels.forEachIndexed { i, chip ->
+            val on = i == index
+            chip.background = TvStyle.shape(context, if (on) Color.WHITE else TvVisual.QUIET, radius = 999)
+            chip.setTextColor(if (on) TvStyle.background else TvStyle.text)
+            chip.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        }
+    }
+
     override fun onDetachedFromWindow() {
         release()
         super.onDetachedFromWindow()
     }
 
     private fun release() {
+        handler.removeCallbacks(watchdog)
         orb.level = 0f
         orb.active = false
         recognizer?.let { runCatching { it.cancel() }; runCatching { it.destroy() } }
@@ -164,11 +226,21 @@ internal class VoiceSearchOverlay(
         orb.active = next == State.LISTENING || next == State.PROCESSING
         orb.error = next == State.ERROR
         if (next != State.LISTENING) orb.level = 0f
+        actions.visibility = if (next == State.ERROR) View.VISIBLE else View.GONE
+        // An empty transcript would still reserve two large lines and push the buttons into the hint.
+        transcript.visibility = if (next == State.ERROR && (transcript.text.isNullOrBlank() || transcript.currentTextColor == TvStyle.muted)) View.GONE else View.VISIBLE
+        if (next == State.ERROR) select(0)
         hint.text = when (next) {
-            State.ERROR -> "按确定键重试  ·  按返回键取消"
+            State.ERROR -> "← → 选择  ·  确定执行  ·  返回键关闭"
             State.LISTENING -> "说完后稍等片刻，或按确定键结束  ·  按返回键取消"
             else -> "按返回键取消"
         }
+        arm(when (next) {
+            State.PREPARING -> 6000L
+            State.LISTENING -> if (heardSpeech) 15000L else 10000L
+            State.PROCESSING -> 10000L
+            else -> 0L
+        })
     }
 
     private fun showText(value: String) {
@@ -179,7 +251,7 @@ internal class VoiceSearchOverlay(
 
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) { if (state != State.DONE) show(State.LISTENING, "请说出想看的剧名") }
-        override fun onBeginningOfSpeech() { if (state != State.DONE) show(State.LISTENING, "正在聆听…") }
+        override fun onBeginningOfSpeech() { if (state != State.DONE) { heardSpeech = true; show(State.LISTENING, "正在聆听…") } }
         override fun onRmsChanged(rmsdB: Float) { if (state == State.LISTENING) orb.level = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f) }
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() { if (state != State.DONE) show(State.PROCESSING, "正在识别…") }
@@ -192,8 +264,8 @@ internal class VoiceSearchOverlay(
             if (state == State.DONE) return
             Log.w(TAG, "recognizer error $error")
             release()
-            show(State.ERROR, VoiceSearch.errorMessage(error))
             if (transcript.currentTextColor == TvStyle.muted) transcript.text = ""
+            show(State.ERROR, VoiceSearch.errorMessage(error))
         }
         override fun onResults(results: Bundle?) {
             if (state == State.DONE) return

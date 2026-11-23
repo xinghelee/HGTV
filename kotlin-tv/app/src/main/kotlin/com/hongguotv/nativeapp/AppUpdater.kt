@@ -14,9 +14,13 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.graphics.Color
+import android.graphics.Typeface
+import android.view.Gravity
 import android.view.View
-import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.FileProvider
@@ -51,11 +55,33 @@ class AppUpdater(
         get() = dialog?.isShowing == true
 
     private var statusView: TextView? = null
+    private var notesView: TextView? = null
+    private var progressView: ProgressBar? = null
+    private var actionView: TextView? = null
     private var anchor: View? = null
-    private var status = "当前版本 ${BuildConfig.VERSION_NAME}"
+    private var status = "点击下方按钮检查是否有新版本"
+    private var notes = ""
+    private var progress = -1
     private var retryAfter = 0L
     private val auto
+        get() = automatic
+
+    /** Persisted switch shared by the settings page; turning it off stops a running background task. */
+    var automatic: Boolean
         get() = preferences.getBoolean("automatic", !BuildConfig.DEBUG)
+        set(enabled) {
+            preferences.edit().putBoolean("automatic", enabled).apply()
+            if (!enabled && busy) {
+                interrupt()
+                updateStatus("自动更新已关闭，可手动检查")
+                renderActions()
+            }
+        }
+
+    /** Short state for the settings row value, e.g. 已是最新 / 发现 0.16.15 / 下载中 40%. */
+    var summary = ""
+        private set
+    var onSummary: ((String) -> Unit)? = null
 
     private val poll =
         object : Runnable {
@@ -116,13 +142,22 @@ class AppUpdater(
         Thread({ repository.close() }, "hongguotv-update-cleanup").start()
     }
 
-    private fun updateStatus(text: String) {
+    private fun updateStatus(text: String, notes: String = "", progress: Int = -1, summary: String? = null) {
         status = text
+        this.notes = notes
+        this.progress = progress
         statusView?.text = text
+        notesView?.apply { this.text = notes; visibility = if (notes.isBlank()) View.GONE else View.VISIBLE }
+        progressView?.apply {
+            visibility = if (progress >= 0) View.VISIBLE else View.GONE
+            this.progress = progress.coerceAtLeast(0)
+        }
+        val short = summary ?: text.lineSequence().first().take(18)
+        if (short != this.summary) { this.summary = short; onSummary?.invoke(short) }
     }
 
     private fun renderActions() {
-        dialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+        actionView?.apply {
             text =
                 when {
                     busy -> "处理中…"
@@ -139,71 +174,130 @@ class AppUpdater(
         if (!active) return
         anchor = from
         dialog?.dismiss()
-        val dp = activity.resources.displayMetrics.density
-        val body =
+        val density = activity.resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        fun label(value: String, size: Float, color: Int = TvStyle.text, bold: Boolean = false) =
+            TextView(activity).apply {
+                text = value
+                textSize = size
+                setTextColor(color)
+                if (bold) setTypeface(null, Typeface.BOLD)
+            }
+        val content =
             LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding((24 * dp).toInt(), (12 * dp).toInt(), (24 * dp).toInt(), 0)
+                setPadding(dp(32), dp(28), dp(32), dp(22))
+                background = TvVisual.panel(activity, modal = true)
+                clipChildren = false
+                clipToPadding = false
             }
-        statusView =
-            TextView(activity).apply {
-                text = status
-                textSize = 17f
-                setTextColor(TvStyle.text)
+        val header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(
+            ImageView(activity).apply {
+                setImageDrawable(activity.applicationInfo.loadIcon(activity.packageManager))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            },
+            LinearLayout.LayoutParams(dp(56), dp(56)).apply { rightMargin = dp(16) },
+        )
+        val names = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        names.addView(label(activity.applicationInfo.loadLabel(activity.packageManager).toString(), 22f, bold = true))
+        names.addView(label("当前版本 ${BuildConfig.VERSION_NAME}", 14f, TvStyle.muted).apply { setPadding(0, dp(2), 0, 0) })
+        header.addView(names, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(header)
+
+        val card =
+            LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(20), dp(16), dp(20), dp(16))
+                background = TvStyle.shape(activity, TvStyle.raised, radius = 12)
             }
-        body.addView(statusView)
-        body.addView(
-            CheckBox(activity).apply {
-                text = "自动检查并下载更新"
-                isChecked = auto
-                setOnCheckedChangeListener { _, enabled ->
-                    preferences.edit().putBoolean("automatic", enabled).apply()
-                    if (!enabled && busy) {
-                        interrupt()
-                        updateStatus("自动更新已关闭，可手动检查")
-                        renderActions()
-                    }
+        statusView = label(status, 18f, bold = true).also { card.addView(it) }
+        progressView =
+            ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                progressDrawable = TvVisual.progress(activity)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }.also { card.addView(it, LinearLayout.LayoutParams(-1, dp(6)).apply { topMargin = dp(12) }) }
+        notesView =
+            label(notes, 14f, TvStyle.muted).apply { setLineSpacing(0f, 1.25f); setPadding(0, dp(10), 0, 0) }
+        card.addView(
+            ScrollView(activity).apply { isVerticalScrollBarEnabled = false; addView(notesView) },
+            LinearLayout.LayoutParams(-1, -2),
+        )
+        content.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+
+        // Focused buttons scale up; leave room so the edge is not clipped.
+        val buttons = LinearLayout(activity).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(dp(6), dp(4), 0, dp(4))
+        }
+        fun button(value: String) =
+            label(value, 16f).apply {
+                id = View.generateViewId()
+                gravity = Gravity.CENTER
+                isFocusable = true
+                isClickable = true
+                minWidth = dp(148)
+                setPadding(dp(26), dp(11), dp(26), dp(11))
+            }
+        val action = button("检查更新").also { TvVisual.primary(it) }
+        val close =
+            button("关闭").apply {
+                fun paint(focused: Boolean) {
+                    background = TvStyle.shape(activity, if (focused) Color.WHITE else TvVisual.QUIET, radius = 999)
+                    setTextColor(if (focused) TvStyle.background else TvStyle.text)
                 }
+                paint(false)
+                setOnFocusChangeListener { _, focused -> paint(focused); TvMotion.focus(this, focused, 1.06f) }
             }
+        actionView = action
+        buttons.addView(action)
+        buttons.addView(close, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(14) })
+        action.nextFocusRightId = close.id
+        close.nextFocusLeftId = action.id
+        listOf(action, close).forEach { it.nextFocusUpId = it.id; it.nextFocusDownId = it.id }
+        content.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
+        content.addView(
+            label(
+                "${if (auto) "自动检查已开启" else "自动检查已关闭"}，可在设置中更改 · 安装前校验签名，收藏与观看记录保留",
+                12f,
+                TvStyle.muted,
+            ).apply { setPadding(0, dp(16), 0, 0) }
         )
-        body.addView(
-            TextView(activity).apply {
-                text = "后台检查与下载不会弹窗或打断浏览。请在此处主动安装新版，收藏与观看记录保留。"
-                textSize = 13f
-                setTextColor(TvStyle.muted)
-                setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
-            }
-        )
-        val next =
-            AlertDialog.Builder(activity)
-                .setTitle("版本与更新 · ${BuildConfig.VERSION_NAME}")
-                .setView(ScrollView(activity).apply { addView(body) })
-                .setNegativeButton("稍后", null)
-                .setPositiveButton("检查更新", null)
-                .create()
+        updateStatus(status, notes, progress, summary)
+
+        val next = AlertDialog.Builder(activity).create()
+        next.setView(content, 0, 0, 0, 0)
         dialog = next
         next.setOnDismissListener {
             if (dialog === next) {
                 dialog = null
                 statusView = null
+                notesView = null
+                progressView = null
+                actionView = null
             }
             if (from?.isAttachedToWindow == true) from.requestFocus()
         }
         next.show()
-        next.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        next.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        next.window?.setDimAmount(.6f)
+        val width = minOf(dp(560), (activity.resources.displayMetrics.widthPixels * .82f).toInt())
+        next.window?.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        action.setOnClickListener {
             when {
                 ready -> install()
                 available != null -> download()
                 else -> check()
             }
         }
-        next.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
-            next.dismiss()
-        }
+        close.setOnClickListener { next.dismiss() }
         renderActions()
-        next.getButton(AlertDialog.BUTTON_POSITIVE).post {
-            if (dialog === next) next.getButton(AlertDialog.BUTTON_POSITIVE).requestFocus()
-        }
+        action.post { if (dialog === next) action.requestFocus() }
+        // Opening the panel is itself the request to check; skip the extra button press.
+        if (!busy && !ready && available == null) check()
     }
 
     private fun <T> work(action: () -> T, done: (T) -> Unit) {
@@ -228,7 +322,8 @@ class AppUpdater(
                             ready = false
                             retryAfter = System.currentTimeMillis() + 30 * 60 * 1000L
                             updateStatus(
-                                if (e is IOException) e.message ?: "更新失败，请重试" else "更新校验失败，请重试"
+                                if (e is IOException) e.message ?: "更新失败，请重试" else "更新校验失败，请重试",
+                                summary = "检查失败",
                             )
                             renderActions()
                         }
@@ -240,7 +335,7 @@ class AppUpdater(
     private fun check() {
         if (busy || !active || !idle()) return
         preferences.edit().putLong("last_attempt", System.currentTimeMillis()).apply()
-        updateStatus("正在检查新版…")
+        updateStatus("正在检查新版…", summary = "检查中…")
         work({ repository.latest() }) { update ->
             available =
                 update.takeIf {
@@ -248,18 +343,15 @@ class AppUpdater(
                 }
             ready = false
             if (available == null) {
-                updateStatus(
-                    if (
-                        update.versionCode > BuildConfig.VERSION_CODE &&
-                            update.minSdk > Build.VERSION.SDK_INT
-                    )
-                        "新版需要 Android API ${update.minSdk}，当前电视继续使用本版"
-                    else "已是最新版本 ${BuildConfig.VERSION_NAME}"
-                )
+                if (update.versionCode > BuildConfig.VERSION_CODE && update.minSdk > Build.VERSION.SDK_INT)
+                    updateStatus("新版需要 Android API ${update.minSdk}，当前电视继续使用本版", summary = "系统版本过低")
+                else updateStatus("已是最新版本", summary = "已是最新")
                 worker.execute { apk.delete() }
             } else {
                 updateStatus(
-                    "发现 ${update.versionName} · ${"%.1f".format(update.size/1048576.0)} MB\n${update.notes}"
+                    "发现新版 ${update.versionName} · ${"%.1f".format(update.size/1048576.0)} MB",
+                    update.notes,
+                    summary = "发现 ${update.versionName}",
                 )
                 if (auto || dialog != null) download()
             }
@@ -269,19 +361,23 @@ class AppUpdater(
     private fun download() {
         val update = available ?: return
         if (busy || !active || !idle()) return
-        updateStatus("正在下载 ${update.versionName}…")
+        updateStatus("正在下载 ${update.versionName}", update.notes, 0, "下载中")
         val ticket = generation + 1
         work({
             repository.download(update, apk) { percent ->
                 main.post {
                     if (generation == ticket && active)
-                        updateStatus("正在下载 ${update.versionName} · $percent%")
+                        updateStatus("正在下载 ${update.versionName} · $percent%", update.notes, percent, "下载中 $percent%")
                 }
             }
             validateApk(update)
         }) {
             ready = true
-            updateStatus("${update.versionName} 已下载并校验\n${update.notes}\n\n确认后由系统覆盖安装，保留本机记录。")
+            updateStatus(
+                "${update.versionName} 已下载，可以安装",
+                (update.notes.takeIf { it.isNotBlank() }?.plus("\n\n") ?: "") + "确认后由系统覆盖安装，保留本机记录。",
+                summary = "可安装 ${update.versionName}",
+            )
         }
     }
 

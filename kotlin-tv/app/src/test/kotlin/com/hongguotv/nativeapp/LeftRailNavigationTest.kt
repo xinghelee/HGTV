@@ -145,9 +145,9 @@ class LeftRailNavigationTest {
                 switch.invoke(activity, 6)
                 layout(activity.window.decorView)
                 assertEquals(0, field("settingsGroup").getInt(activity))
-                assertEquals("检查更新", ((field("root").get(activity) as View).findFocus() as TextView).text.toString())
+                assertTrue(((field("root").get(activity) as View).findFocus() as TextView).text.toString().startsWith("检查更新"))
                 val labels = views(field("root").get(activity) as View).filterIsInstance<TextView>()
-                assertTrue(labels.any { it.text.toString().startsWith("当前版本") })
+                assertTrue(labels.any { it.text.toString().startsWith("版本 ") })
                 val shell = field("catalogShell").get(activity) as CatalogShell
                 assertFalse(views(shell.getChildAt(0)).filterIsInstance<TextView>().any { it.text == "检查更新" })
             }

@@ -231,14 +231,14 @@ class TvUsabilityTest {
             root.measure(View.MeasureSpec.makeMeasureSpec(960, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(540, View.MeasureSpec.EXACTLY))
             root.layout(0, 0, 960, 540)
-            assertEquals("检查更新", (root.findFocus() as TextView).text.toString())
+            assertTrue((root.findFocus() as TextView).text.toString().startsWith("检查更新"))
             root.findViewWithTag<View>("settings-category-1").performClick()
             val quality = texts(root).first { it.text.toString().startsWith("默认清晰度") }
             assertTrue(quality.hasFocus())
             val card = quality.parent as View
             assertEquals(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, card.layoutParams.height)
             val rows = texts(root)
-            listOf("检查更新", "播放", "外观与操作", "账户", "关于应用").forEach { title ->
+            listOf("版本更新", "播放", "外观与操作", "账户", "关于应用").forEach { title ->
                 assertTrue(rows.any { it.text == title })
             }
             val danmaku = rows.single { it.text == "弹幕设置" }
