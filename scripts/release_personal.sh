@@ -41,7 +41,7 @@ print(json.dumps(dict(schema=1, packageName='com.hongguotv.nativeapp', versionCo
 PY
 (cd "$out" && shasum -a 256 *.apk update.json > SHA256SUMS)
 
-git tag -f "$tag"
-git push origin HEAD "refs/tags/$tag" --force
+git tag "$tag"
+git push origin HEAD "refs/tags/$tag"
 gh release create "$tag" --repo "$REPOSITORY" --title "红果短剧 TV $version" --notes "$notes" --latest "$out"/*
 echo "Published $tag ($code) to https://github.com/$REPOSITORY/releases/tag/$tag"
