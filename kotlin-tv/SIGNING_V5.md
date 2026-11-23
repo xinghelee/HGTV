@@ -2,14 +2,16 @@
 
 The current player endpoint rejects the former v3 Medusa request with an empty
 HTTP 200 response. Anonymous re-registration alone does not fix it. Playback now
-uses `/novel/player/multi_video_model/player/v1`, gzip JSON and an independently
+uses `/novel/player/multi_video_model/preload/v1`, gzip JSON and an independently
 implemented Android `v04.10.03` Medusa / Helios / Khronos signature.
 
 ## Implementation and provenance
 
-The existing GPL Kotlin signing code remains the implementation base. No native
-SDK, JNI wrapper, executable bytecode, VM interpreter, remote signing service or
-captured device session is included. `V5Constants` contains wire-format constants
+The production build uses the GPL Kotlin signing implementation. No native signing
+SDK binary, executable bytecode, VM interpreter, remote signing service or captured
+device session is included or needed. The earlier JNI prototype is archived in
+ignored local research outputs; production source and build wiring have been removed.
+`V5Constants` contains wire-format constants
 and the application's protocol key, not a user's account credential. Requests
 use a freshly registered anonymous identity, shared through `PlaybackDeviceSession`;
 no account cookie is sent to the model endpoint.
@@ -46,7 +48,80 @@ transport remains separately named `legacyStreamLadderWithCompatibility` for
 its existing compatibility regression tests; it is not used as evidence that
 v5 works. Catalog/search signing remains v3.
 
+## Issue #83: video-tab recovery (2026-11-22)
+
+The primary v5 POST returned HTTP 200 with zero bytes on main `c14f3ef`.
+Its `video_tab` fallback still used the old v3 signing/profile, so that GET also
+returned an empty body. A same-identity probe using v5 for the GET returned
+successful models for four episodes across two series and decrypted MP4 headers.
+This recovery did not need SDI token exchange or another device registration.
+The reason the primary POST became unavailable is not established by this test.
+
+The production fallback now shares the POST's v5 device/version profile and
+signs the exact episode query with the digest of **empty bytes**. A null signing
+body in the legacy signer produces a zero digest and is not equivalent. The GET
+sends no body, Content-Encoding, Content-Type, x-ss-stub or account Cookie.
+The existing shared deadline, cancellation, exact-episode parsing, backoff and
+foreground-only fallback remain in effect. Catalog and legacy diagnostics retain
+their separate signing paths.
+
+Protocol references are GPL-3.0 implementations derived from this project's v5
+signer, with later video-tab fixes:
+
+- [hongguo-drama 92df757](https://github.com/jackotom/hongguo-drama/blob/92df757ed7be8ea658ee274a6a429b77f49e54e8/src/native/app-source.js)
+- [hongguo-tv 9e7386f](https://github.com/aston314/hongguo-tv/blob/9e7386f1dab840e64779b475a7d2bb5e59ab776f/webos/service/mobile-playback-v5.js)
+
+Regression checks cover the v5 wire version and empty-body digest branch on the
+actual production fallback, shared identity/profile, omitted POST headers,
+signing the final query, and cancellation between primary and recovery requests.
+
+Validation: 408 core tests and 347 Android app unit tests passed, with no failures
+or skipped cases; debug lint and both debug APK builds passed. On the Android 14
+ARM64 emulator, `LivePlaybackInstrumentation` passed seven real episodes across
+three series, including episodes 54, 55 and 70, decoded 1080p frames, advancing
+playback, seek, pause/resume and automatic next episode. This is emulator evidence,
+not physical-TV acceptance. The fix is included in 0.16.12.
+
 ## Reproducing acceptance
+
+### Issue #102: pure Kotlin playback recovery (2026-11-23)
+
+Production playback now uses the current 74532 App request profile and the existing
+Kotlin V5 implementation with wire field 21 set to 312 (zigzag encoding 624).
+The internal SDK meaning of this field is not established. Successful official App
+and standalone SDK messages shared this value; the former Kotlin value was 377.
+
+The same URL, gzip body, identity, timestamp and transport were retained during
+live A/B checks. Replacing only field 21 in the otherwise successful native Medusa
+with 377 returned 200/0B. Replacing only this field in the otherwise failing Kotlin
+Medusa with 312 returned models for both issue samples, including repeated calls.
+The first 16 bytes of F13 matched; its final four bytes and runtime metadata still
+differ, but transplanting those fields was unnecessary in these tests. No captured
+state or SDK output is used by the Kotlin implementation.
+
+`MobilePlayback.signer` selects the verified current request profile, binds the
+exact gzip bytes and final query, and uses the existing bounded ticket selection.
+The default model host is reading.snssdk.com; an explicit alternate host is still
+honored. App-provided VOD codec negotiation handles ByteVC2-only models without
+forwarding signing or account headers. No website API or player is used.
+
+Build normally with `:app:assembleDebug :app:assembleDebugAndroidTest`; no native
+SDK option or preparation step is required. On an isolated TV emulator without the
+official App, clear only the task's debug package, then run:
+
+```sh
+adb shell pm clear com.hongguotv.nativeapp.debug
+adb shell am instrument -w -r -e issue102Samples true \
+  com.hongguotv.nativeapp.debug.test/com.hongguotv.nativeapp.LivePlaybackInstrumentation
+```
+
+Require `PASS pure Kotlin TV playback`, not just adb exit status. The test checks
+that no signing SDK asset/library is packaged and uses the production player for
+three issue samples, the next episode, decoded progress, seek and pause/resume.
+The research record retains native and field-level A/B history separately from
+pure Kotlin playback acceptance. See [the evidence and limits](../docs/research/2026-11-23-issue102-nonweb-playback.md).
+
+### Default playback acceptance
 
 Build `:app:assembleDebug :app:assembleDebugAndroidTest`, install the debug app
 and test APK on an Android TV emulator, then run:
@@ -60,6 +135,9 @@ This is an explicit real-network acceptance test, excluded from unit tests and
 ordinary builds. It refuses a non-debug package or a signed-in account. Success
 requires the final `PASS` message, not merely adb exit status. It checks the
 production activity/player, exact episode ID, rendered frames, advancing time,
-seek, pause/resume, automatic next episode and late episodes. Upstream catalog
+seek, pause/resume, automatic next episode and late episodes. It also opens the
+episode comments from the playback menu, requires a successful comment response
+while playback advances, then checks focus restoration when the panel closes.
+Upstream catalog
 and video availability may change; this test does not claim physical-TV or
 Android 5 hardware acceptance.

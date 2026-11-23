@@ -879,6 +879,7 @@ constructor(
         trace: PlaybackRequestTrace = PlaybackRequestTrace(),
         transport: OkHttpClient = http,
         strict: Boolean = false,
+        mobileV5: Boolean = false,
     ): JSONObject? {
         val extra = mapOf(
             "video_id" to id, "video_id_type" to "0", "device_level" to "1",
@@ -888,7 +889,8 @@ constructor(
         )
         // One preferred request; the legacy path retains the bounded cross-host retry budget.
         for (host in listOf(PlayRetryPlan.hosts.first())) {
-            val request = playbackRequest(
+            val request = if (mobileV5) MobilePlayback.videoTabRequest(id, identity.values, host, clock())
+            else playbackRequest(
                 "https://$host/reading/bookapi/video_tab/multi_video_model/v1/",
                 identity, extra,
             )
@@ -990,7 +992,7 @@ constructor(
                 val transport = http.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
                 val trace = PlaybackRequestTrace()
                 val entry = try {
-                    tabVideoModel(id, profile, trace, transport, strict = true)
+                    tabVideoModel(id, profile, trace, transport, strict = true, mobileV5 = true)
                 } catch (_: EmptyPlaybackResponseException) {
                     throw EmptyPlaybackResponseException(empty.detail, allPlaybackModelsEmpty = true).apply {
                         addSuppressed(empty)
@@ -1006,12 +1008,30 @@ constructor(
                     }
                 }
                 RequestScope.ensureActive()
-                val rows = entry?.optJSONObject("video_model")?.let(PlaybackModels::renditions).orEmpty()
-                if (rows.isEmpty()) {
+                val model = entry?.optJSONObject("video_model")
+                if (model == null) {
                     empty.addSuppressed(PlaybackDiagnosticException("video-tab-no-model ${trace.summary()}"))
                     throw empty
                 }
-                StreamLadder(rows)
+                val rows = PlaybackModels.renditions(model)
+                if (rows.isNotEmpty()) return@withDeadline StreamLadder(rows)
+
+                // The tab model can contain only bytevc2. The mobile model on the same host can supply HEVC.
+                val alternateHost = PlayRetryPlan.host(0)
+                try {
+                    MobilePlayback.ladder(
+                        id, profile.values, http, MobilePlayback.signer, clock(), host = alternateHost,
+                    )
+                } catch (alternate: IOException) {
+                    RequestScope.ensureActive()
+                    alternate.addSuppressed(empty)
+                    alternate.addSuppressed(
+                        PlaybackDiagnosticException(
+                            "video-tab-no-compatible-source ${trace.summary()} alternate-model=${PlayRetryPlan.tag(alternateHost)}"
+                        )
+                    )
+                    throw alternate
+                }
             }
         }
 

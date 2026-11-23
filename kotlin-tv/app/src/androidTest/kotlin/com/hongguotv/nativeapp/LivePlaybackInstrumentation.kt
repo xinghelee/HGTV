@@ -15,10 +15,15 @@ import com.hongguotv.core.Detail
 
 /** Explicit real-network acceptance: uses the Activity's production player, never a sample URL. */
 class LivePlaybackInstrumentation : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var issue102Samples = false
+    override fun onCreate(arguments: Bundle?) {
+        issue102Samples = arguments?.getString("issue102Samples") == "true"
+        super.onCreate(arguments); start()
+    }
     private fun field(name: String) = MainActivity::class.java.getDeclaredField(name).apply { isAccessible = true }
 
     override fun onStart() {
+        if (issue102Samples) { Issue102PlaybackAcceptance.run(this); return }
         val result = Bundle()
         var activity: MainActivity? = null
         try {
@@ -68,6 +73,44 @@ class LivePlaybackInstrumentation : Instrumentation() {
             check(home.items.size >= 2)
             val first = repo.detail(home.items[0].id)
             start(first, 0)
+            var comments: android.app.Dialog? = null
+            var commentsAnchor: TextView? = null
+            var beforeComments = 0L
+            runOnMainSync {
+                current.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MENU))
+                current.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MENU))
+                commentsAnchor = (field("controls").get(current) as View).findViewWithTag("comments")
+                check(commentsAnchor!!.requestFocus())
+                beforeComments = player()!!.currentPosition
+                commentsAnchor!!.performClick()
+                val social = (field("social\$delegate").get(current) as Lazy<*>).value!!
+                comments = social.javaClass.getDeclaredField("dialog").apply { isAccessible = true }
+                    .get(social) as android.app.Dialog
+                check(comments!!.isShowing && player()!!.isPlaying)
+            }
+            fun labels(view: View): List<String> = when (view) {
+                is TextView -> listOf(view.text.toString())
+                is android.view.ViewGroup -> (0 until view.childCount).flatMap { labels(view.getChildAt(it)) }
+                else -> emptyList()
+            }
+            var commentsLoaded = false
+            val commentsDeadline = SystemClock.elapsedRealtime() + 15_000
+            while (SystemClock.elapsedRealtime() < commentsDeadline && !commentsLoaded) {
+                Thread.sleep(100)
+                runOnMainSync {
+                    commentsLoaded = labels(comments!!.window!!.decorView).any { it.startsWith("已加载 ") }
+                }
+            }
+            check(commentsLoaded) { "Episode comments did not load" }
+            Thread.sleep(3000)
+            runOnMainSync {
+                check(comments!!.isShowing && player()!!.isPlaying)
+                check(player()!!.currentPosition >= beforeComments + 2500)
+                comments!!.dismiss()
+            }
+            waitForIdleSync()
+            runOnMainSync { check(commentsAnchor!!.hasFocus() && player()!!.isPlaying) }
+            sendStatus(0, Bundle().apply { putString("stream", "PASS: episode comments loaded during advancing playback; closing restored menu focus\n") })
             val library = field("library").get(current) as Library
             val initialProgressSetting = library.alwaysShowProgress
             try {
