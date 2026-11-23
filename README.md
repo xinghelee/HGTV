@@ -2,9 +2,16 @@
   <img src="assets/brand/logo-pixel.png" width="200" alt="红果 TV 像素小电视" />
 </p>
 
-# 红果 TV
+# 红果 TV（个人构建）
 
 非官方红果短剧电视客户端。Kotlin 原生 APK，安装后联网使用，仅提供 APK 安装包。
+
+本仓库是 [N3urda/hongguoTV](https://github.com/N3urda/hongguoTV) 的个人分支，持续同步上游修复，并在此基础上做了以下改动：
+
+- 应用改名为「红果短剧」，替换启动图标和电视横幅。
+- 深色影院风格首页、详情页和播放器界面，重新设计排行榜、搜索、「我的」和找剧筛选。
+- 语音搜索：调用电视自带语音识别，在应用内以全屏收听界面进行。
+- 应用内检查更新改为读取本仓库 Releases，使用独立签名，与上游安装包不能互相覆盖。
 
 ## 免责声明
 
@@ -26,15 +33,23 @@
 
 ## 下载与兼容
 
-[发布版本](https://github.com/N3urda/hongguoTV/releases) · [构建说明](kotlin-tv/README.md) · [更新与发布](kotlin-tv/AUTO_UPDATES.md)
+[发布版本](https://github.com/xinghelee/HGTV/releases/latest) · [构建说明](kotlin-tv/README.md) · [上游更新与发布](kotlin-tv/AUTO_UPDATES.md)
 
-本次功能集成保留包名 `com.hongguotv.nativeapp`、原签名配置和主线 Android 5.0（API 21）兼容目标。具体测试结果见 [集成记录](kotlin-tv/MAIN_INTEGRATION.md)，最低 SDK 配置不代表所有实体电视已验收。开发签名预览包不能覆盖原签名包，请勿为更新先卸载。
+从 [Releases](https://github.com/xinghelee/HGTV/releases/latest) 下载 `hongguotv-kotlin-<版本>-android6.apk`（Android 6.0 及以上，ARM32/ARM64 通用）。国内网络可在链接前加 `https://ghfast.top/` 加速。
+
+- 包名仍为 `com.hongguotv.nativeapp`，但签名与上游不同：已装上游版本的电视需先卸载才能安装本版本（会清除本机记录）；已装本仓库任一版本的可直接覆盖安装。
+- 本仓库 Releases 发布的版本，设置中的「检查更新」都读取本仓库，可在电视上直接升级。此前未经 Releases 发布的个人构建（如 0.16.11）仍指向上游，需手动覆盖安装一次。
+- 本分支只发布 Android 6+ 包，不提供上游的 Android 5 兼容包。实测设备：飞利浦 2021 款 Android TV（Android 11，ARM32）。
+
+### 版本号
+
+标签为 `kotlin-v<版本>-xh`，versionCode = 上游 versionCode × 100 + 补丁号。例如上游 0.16.14（35）对应 3500；两次上游发布之间的个人改动依次为 0.16.14.1（3501）、0.16.14.2（3502）……，保证始终高于已安装版本，也不与上游下个版本冲突。
 
 账户预约每类当前最多读取最近 20 部，云端历史读取最近 50 部；以手机账号数据核对为准。旧「稍后看」与备份底层数据保留，新界面暂不提供入口。Mac 客户端与伴机服务端未纳入本次交付。
 
 ## 反馈与贡献
 
-欢迎大家在使用过程中提出问题、分享建议，一起让项目变得更好。如果遇到使用问题，或有希望增加的功能，可以直接提交 [Issue](https://github.com/N3urda/hongguoTV/issues)；也欢迎通过 [Pull Request](https://github.com/N3urda/hongguoTV/pulls) 贡献修复和改进。
+欢迎大家在使用过程中提出问题、分享建议，一起让项目变得更好。本分支的问题请提交到 [本仓库 Issue](https://github.com/xinghelee/HGTV/issues)；播放协议、接口等通用问题建议同时关注 [上游 Issue](https://github.com/N3urda/hongguoTV/issues)，修复会在上游发布后同步到本分支。
 
 我们会认真阅读并评估每一份反馈与贡献，结合项目定位、实际需求和维护成本，逐步安排修复、完善功能，或审阅并合并合适的代码改动。
 
@@ -44,10 +59,16 @@
 
 ```sh
 ./kotlin-tv/gradlew -p kotlin-tv :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-# 使用原签名配置构建，文件只生成在本地
-./scripts/build-kotlin.sh
 ```
 
-公开仓库标准 GitHub Actions 构建继续保留；本地测试与构建也可独立执行。正式发布在用户合并 PR 后进行，不把测试包当成已发布版本。
+## 同步上游与发布
 
-本项目与红果官方无关联，平台接口变化可能导致功能失效。代码采用 GPL-3.0，来源与依赖说明见 [NOTICE](kotlin-tv/NOTICE.md)。`android/`、`ios/`、`src/`、`server/` 保留旧实现，原生 APK 不依赖这些目录。
+```sh
+git fetch upstream && git merge upstream/main      # 在 personal-build 分支
+./scripts/release_personal.sh "更新说明"            # 跟随上游版本发布
+HONGGUOTV_PATCH=1 ./scripts/release_personal.sh "更新说明"  # 上游版本之间的个人改动
+```
+
+发布脚本要求工作区干净，依次运行单元测试、构建签名包、生成 `update.json` 与 `SHA256SUMS`，推送分支和标签并创建 GitHub Release。签名读取本地未跟踪的 `kotlin-tv/keystore.properties`，签名文件不入库。上游的 `scripts/release_tv.py` 与 CI 发布流程仅用于 N3urda/hongguoTV，本仓库不使用。
+
+本项目与红果官方无关联，平台接口变化可能导致功能失效（例如 2026-11-23 的接口变更导致 0.16.13 及更早版本无法播放，已在 0.16.14 修复）。代码采用 GPL-3.0，来源与依赖说明见 [NOTICE](kotlin-tv/NOTICE.md)。`android/`、`ios/`、`src/`、`server/` 保留旧实现，原生 APK 不依赖这些目录。
