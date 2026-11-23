@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build and publish a personal release to xinghelee/HGTV so the in-app updater can find it.
 # Usage: scripts/release_personal.sh [notes]
-# Override the version with HONGGUOTV_VERSION_NAME / HONGGUOTV_VERSION_CODE when releasing
-# personal changes between upstream versions (versionCode must exceed the installed one).
+# versionCode = upstream versionCode * 100 + HONGGUOTV_PATCH, so personal builds between
+# upstream releases (HONGGUOTV_PATCH=1, 2, ...) never collide with the next upstream code.
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
@@ -13,8 +13,10 @@ notes="${1:-个人构建}"
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17)}"
 
 gradle_file=kotlin-tv/app/build.gradle.kts
-version="${HONGGUOTV_VERSION_NAME:-$(sed -n 's/.*versionName = .*?: "\([^"]*\)".*/\1/p' "$gradle_file")}"
-code="${HONGGUOTV_VERSION_CODE:-$(sed -n 's/.*versionCode = .*?: \([0-9]*\).*/\1/p' "$gradle_file")}"
+patch="${HONGGUOTV_PATCH:-0}"
+version="$(sed -n 's/.*versionName = .*?: "\([^"]*\)".*/\1/p' "$gradle_file")"
+[[ "$patch" == 0 ]] || version="$version.$patch"
+code=$(( $(sed -n 's/.*versionCode = .*?: \([0-9]*\).*/\1/p' "$gradle_file") * 100 + patch ))
 tag="kotlin-v$version-xh"  # suffix keeps personal tags distinct from upstream tags
 export HONGGUOTV_VERSION_NAME="$version" HONGGUOTV_VERSION_CODE="$code"
 
