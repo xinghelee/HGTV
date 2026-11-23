@@ -58,26 +58,29 @@ class AppUpdatesTest {
         }
     }
 
-    @Test fun metadataUsesAcceleratorFirst() {
+    @Test fun metadataUsesOwnServerFirst() {
         val urls = mutableListOf<String>()
         repository { url -> urls += url; json().toString().toByteArray() }.use {
             assertEquals(update(), it.latest())
         }
-        assertEquals(listOf(UpdateDownloadSources.MIRROR + AppUpdate.RELEASES + "/latest/download/update.json"), urls)
+        assertEquals(listOf("https://hg.xinghelee.com/hgtv/update.json"), urls)
     }
-    @Test fun malformedMirrorMetadataFallsBackToOrigin() {
+    @Test fun malformedMetadataFallsBackThroughAllSources() {
         val urls = mutableListOf<String>()
-        repository { url -> urls += url; if (urls.size == 1) "<html>error</html>".toByteArray() else json().toString().toByteArray() }.use {
+        repository { url -> urls += url; if (urls.size < 3) "<html>error</html>".toByteArray() else json().toString().toByteArray() }.use {
             assertEquals(update(), it.latest())
         }
-        assertEquals(UpdateDownloadSources.urls(AppUpdate.RELEASES + "/latest/download/update.json"), urls)
+        assertEquals(listOf("https://hg.xinghelee.com/hgtv/update.json",
+            UpdateDownloadSources.MIRROR + AppUpdate.RELEASES + "/latest/download/update.json",
+            AppUpdate.RELEASES + "/latest/download/update.json"), urls)
     }
-    @Test fun corruptMirrorApkFallsBackAndVerifiesOrigin() = withFile { file ->
+    @Test fun corruptApkFallsBackAndVerifiesNextSource() = withFile { file ->
         val urls = mutableListOf<String>()
         repository { url -> urls += url; if (urls.size == 1) ByteArray(bytes.size) else bytes }.use {
             it.download(update(), file) {}
         }
-        assertEquals(UpdateDownloadSources.urls(update().downloadUrl), urls)
+        assertEquals(UpdateDownloadSources.apkUrls(update()).take(2), urls)
+        assertEquals("https://hg.xinghelee.com/hgtv/kotlin-v0.9.0-build.1/hongguotv-kotlin-0.9.0-build.1-android8.apk", urls.first())
         assertTrue(UpdateFiles.verify(file, update()))
     }
     @Test fun failedMirrorRequestFallsBack() {

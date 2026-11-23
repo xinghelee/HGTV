@@ -38,7 +38,7 @@
 从 [Releases](https://github.com/xinghelee/HGTV/releases/latest) 下载 `hongguotv-kotlin-<版本>-android6.apk`（Android 6.0 及以上，ARM32/ARM64 通用）。国内网络可在链接前加 `https://ghfast.top/` 加速。
 
 - 包名仍为 `com.hongguotv.nativeapp`，但签名与上游不同：已装上游版本的电视需先卸载才能安装本版本（会清除本机记录）；已装本仓库任一版本的可直接覆盖安装。
-- 本仓库 Releases 发布的版本，设置中的「检查更新」都读取本仓库，可在电视上直接升级。此前未经 Releases 发布的个人构建（如 0.16.11）仍指向上游，需手动覆盖安装一次。
+- 本仓库 Releases 发布的版本，设置中的「检查更新」都读取本仓库，可在电视上直接升级。0.16.14.2 起依次尝试 `https://hg.xinghelee.com/hgtv/`（自有服务器）、GitHub 加速镜像和 GitHub，任一来源失效都不影响更新；各来源的安装包都会校验 SHA256 和安装签名。此前未经 Releases 发布的个人构建（如 0.16.11）仍指向上游，需手动覆盖安装一次。
 - 本分支只发布 Android 6+ 包，不提供上游的 Android 5 兼容包。实测设备：飞利浦 2021 款 Android TV（Android 11，ARM32）。
 
 ### 版本号
@@ -69,6 +69,6 @@ git fetch upstream && git merge upstream/main      # 在 personal-build 分支
 HONGGUOTV_PATCH=1 ./scripts/release_personal.sh "更新说明"  # 上游版本之间的个人改动
 ```
 
-发布脚本要求工作区干净，依次运行单元测试、构建签名包、生成 `update.json` 与 `SHA256SUMS`，推送分支和标签并创建 GitHub Release。签名读取本地未跟踪的 `kotlin-tv/keystore.properties`，签名文件不入库。上游的 `scripts/release_tv.py` 与 CI 发布流程仅用于 N3urda/hongguoTV，本仓库不使用。
+发布脚本要求工作区干净，依次运行单元测试、构建签名包、生成 `update.json` 与 `SHA256SUMS`，推送分支和标签、创建 GitHub Release，并把安装包和 `update.json` 同步到更新服务器（`liquid-tokyo:/opt/hgtv/hgtv`，由该机 Caddy 提供 `hg.xinghelee.com`）。签名读取本地未跟踪的 `kotlin-tv/keystore.properties`，签名文件不入库。上游的 `scripts/release_tv.py` 与 CI 发布流程仅用于 N3urda/hongguoTV，本仓库不使用。
 
 本项目与红果官方无关联，平台接口变化可能导致功能失效（例如 2026-11-23 的接口变更导致 0.16.13 及更早版本无法播放，已在 0.16.14 修复）。代码采用 GPL-3.0，来源与依赖说明见 [NOTICE](kotlin-tv/NOTICE.md)。`android/`、`ios/`、`src/`、`server/` 保留旧实现，原生 APK 不依赖这些目录。

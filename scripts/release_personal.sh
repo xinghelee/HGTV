@@ -7,6 +7,10 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
 REPOSITORY=xinghelee/HGTV
+# Own update server (https://hg.xinghelee.com/hgtv/), served by Caddy from /opt/hgtv on liquid-tokyo.
+SERVER_HOST=liquid-tokyo
+SERVER_DIR=/opt/hgtv/hgtv
+SSH="ssh -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o ConnectTimeout=10"
 notes="${1:-个人构建}"
 
 [[ -z "$(git status --porcelain)" ]] || { echo "Working tree not clean" >&2; exit 1; }
@@ -43,7 +47,16 @@ print(json.dumps(dict(schema=1, packageName='com.hongguotv.nativeapp', versionCo
 PY
 (cd "$out" && shasum -a 256 *.apk update.json > SHA256SUMS)
 
+# APK goes up first so the server's update.json never points at a missing file.
+$SSH "$SERVER_HOST" "mkdir -p $SERVER_DIR/$tag"
+rsync -a -e "$SSH" "$out/$apk" "$SERVER_HOST:$SERVER_DIR/$tag/"
+$SSH "$SERVER_HOST" "chmod -R a+rX $SERVER_DIR"
+
 git tag "$tag"
 git push origin HEAD "refs/tags/$tag"
 gh release create "$tag" --repo "$REPOSITORY" --title "红果短剧 TV $version" --notes "$notes" --latest "$out"/*
+rsync -a -e "$SSH" "$out/update.json" "$SERVER_HOST:$SERVER_DIR/update.json.tmp"
+$SSH "$SERVER_HOST" "chmod a+r $SERVER_DIR/update.json.tmp && mv $SERVER_DIR/update.json.tmp $SERVER_DIR/update.json"
+curl -fsS --resolve hg.xinghelee.com:443:45.76.53.2 https://hg.xinghelee.com/hgtv/update.json | grep -q "\"versionCode\": $code," \
+  || { echo "Server update.json check failed" >&2; exit 1; }
 echo "Published $tag ($code) to https://github.com/$REPOSITORY/releases/tag/$tag"

@@ -74,11 +74,17 @@ interface AppUpdateSource : java.io.Closeable {
     fun cancel()
 }
 
-/** Public release files only; never send credentials to the accelerator. */
+/**
+ * Own server first, then the GitHub accelerator and GitHub itself, so updates keep working if
+ * any single source disappears. Public release files only; never send credentials to these hosts.
+ */
 internal object UpdateDownloadSources {
+    const val SERVER = "https://hg.xinghelee.com/hgtv"
     const val MIRROR = "https://ghfast.top/"
     fun urls(origin: String) = listOf(MIRROR + origin, origin)
-    val hosts = setOf("ghfast.top", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
+    fun manifestUrls() = listOf("$SERVER/update.json") + urls("${AppUpdate.RELEASES}/latest/download/update.json")
+    fun apkUrls(update: AppUpdate) = listOf("$SERVER/${update.tag}/${update.fileName}") + urls(update.downloadUrl)
+    val hosts = setOf("hg.xinghelee.com", "ghfast.top", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
 }
 
 class AppUpdateRepository internal constructor(private val http: OkHttpClient, private val sdk: Int = 21) : AppUpdateSource {
@@ -97,10 +103,10 @@ class AppUpdateRepository internal constructor(private val http: OkHttpClient, p
     private fun request(url: String) = Request.Builder().url(url).header("User-Agent", "HongguoTV-Updater")
         .header("Cache-Control", "no-cache").build()
 
-    private fun <T> fromSources(origin: String, seconds: Long, action: (okhttp3.Response) -> T): T {
+    private fun <T> fromSources(sources: List<String>, seconds: Long, action: (okhttp3.Response) -> T): T {
         val ticket = generation.get()
         var failure: IOException? = null
-        for (url in UpdateDownloadSources.urls(origin)) {
+        for (url in sources) {
             if (Thread.currentThread().isInterrupted || generation.get() != ticket) throw IOException("下载已取消")
             val call = http.newCall(request(url))
             call.timeout().timeout(seconds, TimeUnit.SECONDS)
@@ -122,7 +128,7 @@ class AppUpdateRepository internal constructor(private val http: OkHttpClient, p
         throw failure ?: IOException("更新源暂不可用，请稍后重试")
     }
 
-    override fun latest(): AppUpdate = fromSources("${AppUpdate.RELEASES}/latest/download/update.json", 15) { response ->
+    override fun latest(): AppUpdate = fromSources(UpdateDownloadSources.manifestUrls(), 15) { response ->
         val bytes = response.body?.byteStream()?.use { input ->
             val out = ByteArrayOutputStream(); val buffer = ByteArray(4096)
             while (true) { val n = input.read(buffer); if (n < 0) break; if (out.size() + n > 65536) throw IOException("更新信息过大"); out.write(buffer, 0, n) }
@@ -133,7 +139,7 @@ class AppUpdateRepository internal constructor(private val http: OkHttpClient, p
 
     override fun download(update: AppUpdate, file: File, progress: (Int) -> Unit) {
         if (UpdateFiles.verify(file, update)) return
-        fromSources(update.downloadUrl, 300) { response ->
+        fromSources(UpdateDownloadSources.apkUrls(update), 300) { response ->
             val body = response.body ?: throw IOException("安装包为空")
             if (body.contentLength() >= 0 && body.contentLength() != update.size) throw IOException("安装包长度异常")
             progress(0)
