@@ -15,7 +15,7 @@ export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17)}"
 gradle_file=kotlin-tv/app/build.gradle.kts
 version="${HONGGUOTV_VERSION_NAME:-$(sed -n 's/.*versionName = .*?: "\([^"]*\)".*/\1/p' "$gradle_file")}"
 code="${HONGGUOTV_VERSION_CODE:-$(sed -n 's/.*versionCode = .*?: \([0-9]*\).*/\1/p' "$gradle_file")}"
-tag="kotlin-v$version"
+tag="kotlin-v$version-xh"  # suffix keeps personal tags distinct from upstream tags
 export HONGGUOTV_VERSION_NAME="$version" HONGGUOTV_VERSION_CODE="$code"
 
 ./kotlin-tv/gradlew -p kotlin-tv :core:test :app:testDebugUnitTest :app:assembleRelease --console=plain
