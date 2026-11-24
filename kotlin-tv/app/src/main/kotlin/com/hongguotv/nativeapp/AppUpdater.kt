@@ -63,6 +63,8 @@ class AppUpdater(
     private var notes = ""
     private var progress = -1
     private var retryAfter = 0L
+    // Each app launch checks once, so a new release shows up the next time the app is opened.
+    private var checkedThisLaunch = false
     private val auto
         get() = automatic
 
@@ -92,8 +94,11 @@ class AppUpdater(
                     val last = preferences.getLong("last_attempt", 0)
                     val update = available
                     when {
+                        // A verified download is offered once per version, only while browsing.
+                        update != null && ready &&
+                            preferences.getLong("prompted_version", 0) != update.versionCode -> prompt(update)
                         update != null && !ready && now >= retryAfter -> download()
-                        !ready && (now < last || now - last >= 6 * 60 * 60 * 1000L) -> check()
+                        !ready && (!checkedThisLaunch || now < last || now - last >= 6 * 60 * 60 * 1000L) -> check()
                     }
                 }
                 main.postDelayed(this, 15000)
@@ -332,8 +337,14 @@ class AppUpdater(
             }
     }
 
+    private fun prompt(update: AppUpdate) {
+        preferences.edit().putLong("prompted_version", update.versionCode).apply()
+        show(activity.currentFocus)
+    }
+
     private fun check() {
         if (busy || !active || !idle()) return
+        checkedThisLaunch = true
         preferences.edit().putLong("last_attempt", System.currentTimeMillis()).apply()
         updateStatus("正在检查新版…", summary = "检查中…")
         work({ repository.latest() }) { update ->
