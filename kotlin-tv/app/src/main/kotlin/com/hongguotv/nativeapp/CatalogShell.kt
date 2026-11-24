@@ -33,6 +33,8 @@ internal class CatalogShell(context: Context, private val phone: (View) -> Unit 
         setBackgroundColor(TvStyle.background)
         clipChildren = false
         rail.clipChildren = false
+        // The focused pill scales up into the rail's padding; clipping there flattens its rounded ends.
+        rail.clipToPadding = false
         rail.setPadding(dp(12), dp(if (compact) 12 else 20), dp(12), dp(if (compact) 12 else 16))
         rail.background = TvStyle.scrim(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, 0xB3)
         rail.addView(LinearLayout(context).apply {
