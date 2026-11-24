@@ -191,6 +191,8 @@ internal class DiscoveryScreen(
             textSize = 12f
             includeFontPadding = false
             maxLines = 1
+            // minHeight leaves spare room; without this the label sits at the top of the pill.
+            gravity = android.view.Gravity.CENTER
             isFocusable = true
             isClickable = true
             setPadding(dp(12), dp(6), dp(12), dp(6))
@@ -242,17 +244,23 @@ internal class DiscoveryScreen(
         groups.removeAllViews()
         val available = state.groups.ifEmpty { listOf(DiscoveryGroup("genre", "类型", emptyList())) }
         available.forEach { group ->
-            val row = LinearLayout(context).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
+            // Baseline alignment would override CENTER_VERTICAL and push the label below the chip text.
+            val row = LinearLayout(context).apply {
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                isBaselineAligned = false
+            }
             if (group.type != "genre")
                 row.addView(
                     TextView(context).apply {
                         text = group.label
                         textSize = 12f
+                        includeFontPadding = false
+                        gravity = android.view.Gravity.CENTER_VERTICAL
                         setTextColor(TvStyle.muted)
                     },
                     LayoutParams(dp(40), -2),
                 )
-            val choices = LinearLayout(context)
+            val choices = LinearLayout(context).apply { isBaselineAligned = false }
             val all = DiscoveryFilter("", "全部")
             val options = listOf(all) + group.options
             val budget = (resources.displayMetrics.widthPixels - dp(320)).coerceAtLeast(dp(180))
