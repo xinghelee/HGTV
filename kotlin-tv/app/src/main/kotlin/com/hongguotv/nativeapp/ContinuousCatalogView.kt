@@ -45,6 +45,12 @@ internal class ContinuousCatalogView(
     }
 
     var onBrowsePosition: ((Int) -> Unit)? = null
+    /** The focused title above the grid; pages whose cards already carry it can turn it off. */
+    var showFullTitle = true
+        set(value) {
+            field = value
+            fullTitle.visibility = if (value) VISIBLE else GONE
+        }
     var onGridFocus: ((Boolean) -> Unit)? = null
     private val fullTitle = TextView(context).apply {
         textSize = 16f
@@ -494,8 +500,8 @@ internal class CatalogPosterCard(context: Context) : LinearLayout(context), Focu
             }
         }
         val rankLabel = position?.rank?.let { "第 $it 名" }.orEmpty()
-        badge.text = listOf(rankLabel, position?.heat?.takeIf { it.isNotBlank() } ?: item.badge)
-            .filter(String::isNotBlank).joinToString(" · ")
+        // The rank is already on the poster corner; the line underneath only carries the heat.
+        badge.text = position?.heat?.takeIf { it.isNotBlank() } ?: item.badge
         contentDescription =
             listOf(
                     rankLabel,

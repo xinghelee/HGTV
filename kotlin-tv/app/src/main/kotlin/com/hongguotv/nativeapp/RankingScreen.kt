@@ -76,7 +76,6 @@ internal class RankingScreen(
         val title = row().apply { setPadding(0, dp(2), 0, dp(4)) }
         heading.typeface = Typeface.DEFAULT_BOLD
         title.addView(heading, params(0).apply { weight = 1f })
-        title.addView(label("方向键选剧  ·  确定看详情  ·  长按更多", 12f, TvStyle.muted))
         addView(title)
         val bar = row()
         RankBoard.entries.forEach { board ->
@@ -297,7 +296,10 @@ internal class RankingScreen(
         val all = snapshot?.filtered(state.topic).orEmpty()
         subtitle.text =
             snapshot?.let {
-                "${it.ranking.updatedText.ifBlank { "来源：红果官网热播榜" }}  ·  ${it.items.size} 部${if(state.topic.isNotEmpty()) "  ·  ${state.topic} ${all.size} 部（保留原榜名次）" else "  ·  筛选覆盖本榜全部作品"}"
+                // "11月24日已更新·基于红果内观看/互动等综合热度排序" -> "11月24日已更新"
+                val updated = it.ranking.updatedText.substringBefore('·').trim().ifBlank { "红果热播榜" }
+                if (state.topic.isNotEmpty()) "$updated  ·  题材：${state.topic} · ${all.size} 部"
+                else updated // the grid footer already reads "共 N 部"
             } ?: "选择榜单，发现下一部好剧"
         // 静默续期：旧榜单继续展示，只在状态行末尾提示后台更新。
         if (snapshot != null && state.isRefreshing(state.board))
@@ -339,6 +341,7 @@ internal class RankingScreen(
                 },
                 {},
             )
+        list.showFullTitle = false
         list.onBrowsePosition = { position -> updateHeaderOffset(position) }
         list.onGridFocus = { focused ->
             if (focused) {
