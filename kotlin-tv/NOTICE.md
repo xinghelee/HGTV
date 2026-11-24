@@ -4,6 +4,8 @@
 
 # 原生版第三方声明
 
+2026-11-24：搜索页注音键盘的候选字表 `app/src/main/assets/zhuyin.tsv` 由 `tools/gen_zhuyin_table.py` 生成：读音与注音取自 pypinyin（MIT，https://github.com/mozillazg/python-pinyin），候选字排序依据 wordfreq 的汉字频率（代码 Apache-2.0，数据 CC BY-SA 4.0，https://github.com/rspeer/wordfreq）。表中只含 GB2312 简体字及其注音、拼音，不包含上述项目的代码。
+
 2026-11-22：Issue #83 的 `video_tab` v5 恢复请求对照以下 GPL-3.0 实现的协议字段与空请求体摘要约定：
 
 - jackotom/hongguo-drama，提交 `92df757ed7be8ea658ee274a6a429b77f49e54e8`，`src/native/app-source.js`、`playback-v5.js`：https://github.com/jackotom/hongguo-drama/tree/92df757ed7be8ea658ee274a6a429b77f49e54e8/src/native

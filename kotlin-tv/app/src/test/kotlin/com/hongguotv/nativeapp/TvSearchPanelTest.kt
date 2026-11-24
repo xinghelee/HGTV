@@ -143,7 +143,7 @@ class TvSearchPanelTest {
             assertEquals("历史剧名", searched)
             click("清空")
             assertTrue(panel.input.text.isEmpty())
-            click("打开输入法")
+            click("输入法")
             assertTrue(panel.input.showSoftInputOnFocus)
             assertTrue(panel.input.hasFocus())
             assertFalse(texts(panel).any { it.text == "中文输入" || it.text == "手机控制台" })

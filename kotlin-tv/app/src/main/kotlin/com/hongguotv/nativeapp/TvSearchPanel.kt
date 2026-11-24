@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
+import com.hongguotv.core.Zhuyin
 
 /** Remote-first search workspace; the existing discovery filters remain a separate screen. */
 internal class TvSearchPanel(
@@ -23,7 +24,7 @@ internal class TvSearchPanel(
     val input =
         EditText(context).apply {
             id = View.generateViewId()
-            hint = "剧名 / 拼音首字母"
+            hint = "剧名 / 拼音首字母 / 注音"
             textSize = 20f
             setTextColor(TvStyle.text)
             setHintTextColor(TvStyle.muted)
@@ -49,7 +50,7 @@ internal class TvSearchPanel(
         input.setText(state.draft)
         suggestions.cancel()
         suggestions.restore(state.words)
-        lastKey = state.key.coerceIn(0, 35)
+        lastKey = state.key.coerceIn(0, keys.lastIndex)
         editingFocus = if (state.word >= 0) { suggestions.viewAt(state.word) }
             else recents.getOrNull(state.recent) ?: keys[lastKey]
         updateNavigation()
@@ -74,7 +75,19 @@ internal class TvSearchPanel(
     private val resultHeading = label("搜索结果", 24f).apply { setTextColor(TvStyle.text); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
     fun resultBackEntry(): View = backButton
     val results = LinearLayout(context).apply { orientation = VERTICAL }
-    private val keys = mutableListOf<TextView>()
+    private val abcKeys = mutableListOf<TextView>()
+    private val zhuyinKeys = mutableListOf<TextView>()
+    private val preferences = context.getSharedPreferences("search_keyboard", Context.MODE_PRIVATE)
+    private var zhuyinMode = preferences.getBoolean("zhuyin", false)
+    private val keys: List<TextView> get() = if (zhuyinMode) zhuyinKeys else abcKeys
+    private val zhuyin: Zhuyin by lazy { zhuyinFor(context) }
+    private lateinit var abcGrid: LinearLayout
+    private lateinit var zhuyinGrid: LinearLayout
+    private lateinit var modeButton: TextView
+    // Simplified-character candidates for the syllable being composed: 2 rows of 6, the last slot pages.
+    private val candidateSlots = mutableListOf<TextView>()
+    private lateinit var candidateGrid: LinearLayout
+    private var candidatePage = 0
     private val actions = mutableListOf<TextView>()
     private val recents = mutableListOf<TextView>()
     var resultEntry: () -> View? = { null }
@@ -126,7 +139,12 @@ internal class TvSearchPanel(
 
     // 提交前清理空白和隐藏输入法；非空关键词通过回调交给主页面搜索。
     private fun submit(value: String = input.text.toString()) {
-        value
+        val finished = zhuyin.finish(value, suggestions.values())
+        if (finished != value && value == input.text.toString()) {
+            input.setText(finished)
+            input.setSelection(input.text.length)
+        }
+        finished
             .trim()
             .takeIf { it.isNotEmpty() }
             ?.let {
@@ -177,40 +195,30 @@ internal class TvSearchPanel(
         left.addView(label("搜索", 30f).apply { setTextColor(TvStyle.text); typeface = android.graphics.Typeface.DEFAULT_BOLD })
 
         left.addView(input, LayoutParams(-1, dp(48)))
-        val keyboard =
-            LinearLayout(context).apply {
-                orientation = VERTICAL
-                setPadding(0, dp(8), 0, 0)
-            }
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chunked(6).forEach { row ->
+        candidateGrid = LinearLayout(context).apply { orientation = VERTICAL; setPadding(0, dp(8), 0, 0); visibility = GONE }
+        repeat(2) {
             val line = LinearLayout(context)
-            row.forEach { char ->
-                val key = action(char.toString()) { insert(char.lowercaseChar().toString()) }
-                val keyIndex = keys.size
-                val styleFocus = key.onFocusChangeListener
-                key.setOnFocusChangeListener { view, focused ->
-                    styleFocus?.onFocusChange(view, focused)
-                    if (focused) { lastKey = keyIndex; suggestionsNavigation() }
-                }
-                keys += key
-                line.addView(
-                    key,
-                    LayoutParams(0, dp(40), 1f).apply {
-                        rightMargin = dp(5)
-                        bottomMargin = dp(5)
-                    },
-                )
+            repeat(6) {
+                val slot = action("") { pickCandidate(candidateSlots.indexOf(it)) }
+                candidateSlots += slot
+                line.addView(slot, LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(5); bottomMargin = dp(5) })
             }
-            keyboard.addView(line)
+            candidateGrid.addView(line)
         }
-        left.addView(keyboard)
+        left.addView(candidateGrid)
+        abcGrid = keyGrid("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".map { it.toString() }, abcKeys) { insert(it.lowercase()) }
+        zhuyinGrid = keyGrid(Zhuyin.KEYS.map { it.toString() }, zhuyinKeys) { insert(it) }
+        left.addView(abcGrid)
+        left.addView(zhuyinGrid)
         searchButton = action("搜索") { submit() }
+        modeButton = action(if (zhuyinMode) "ABC" else "注音") { setZhuyinMode(!zhuyinMode) }
         actions +=
             listOf(
                 action("删除") { delete() },
                 action("清空") { input.setText("") },
                 searchButton,
-                action("打开输入法") {
+                modeButton,
+                action("输入法") {
                     input.showSoftInputOnFocus = true
                     input.requestFocus()
                     (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
@@ -250,7 +258,7 @@ internal class TvSearchPanel(
                 input,
                 listOf(keys.last()),
                 { resultEntry() ?: input },
-                fetch,
+                { query -> fetch(zhuyin.suggestionQuery(query)) },
                 { submit(it) },
                 vertical = false,
                 exitHorizontalEdges = true,
@@ -260,7 +268,7 @@ internal class TvSearchPanel(
         if (history.isNotEmpty()) words.addView(label("最近搜索", 22f))
         val historyLine = LinearLayout(context).apply { orientation = VERTICAL }
         val historyTitle = words.getChildAt(words.childCount - 1)
-        val emptyHistory = label("输入剧名或拼音首字母，联想词会显示在这里", 16f).apply {
+        val emptyHistory = label("输入剧名、拼音首字母或注音，联想词会显示在这里", 16f).apply {
             visibility = if (history.isEmpty()) VISIBLE else GONE
         }
         words.addView(emptyHistory)
@@ -287,6 +295,12 @@ internal class TvSearchPanel(
             true
         }
         suggestions.keyboardEntry = { keys[lastKey] }
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: android.text.Editable?) { candidatePage = 0; renderCandidates() }
+        })
+        applyMode()
         suggestions.navigationChanged = {
             suggestionLabel.visibility = if (input.text.isNotBlank()) VISIBLE else GONE
             emptyHistory.visibility = if (history.isEmpty() && input.text.isBlank()) VISIBLE else GONE
@@ -306,16 +320,28 @@ internal class TvSearchPanel(
     fun updateNavigation() {
         backButton.nextFocusDownId = resultEntry()?.id ?: backButton.id
         val right = middleEntry()?.id ?: input.id
+        val slots = candidateSlots.filter { it.visibility == VISIBLE && candidateGrid.visibility == VISIBLE }
+        val candidateRows = slots.chunked(6)
         keys.forEachIndexed { i, key ->
             key.nextFocusLeftId = if (i % 6 == 0) upper.id else keys[i - 1].id
             key.nextFocusRightId = if (i % 6 == 5) right else keys[i + 1].id
-            key.nextFocusUpId = keys.getOrNull(i - 6)?.id ?: input.id
+            key.nextFocusUpId = keys.getOrNull(i - 6)?.id
+                ?: candidateRows.lastOrNull()?.let { (it.getOrNull(i % 6) ?: it.last()).id } ?: input.id
             key.nextFocusDownId = keys.getOrNull(i + 6)?.id ?: actions.first().id
+        }
+        candidateRows.forEachIndexed { row, line ->
+            line.forEachIndexed { i, slot ->
+                slot.nextFocusLeftId = line.getOrNull(i - 1)?.id ?: upper.id
+                slot.nextFocusRightId = line.getOrNull(i + 1)?.id ?: right
+                slot.nextFocusUpId = candidateRows.getOrNull(row - 1)?.let { (it.getOrNull(i) ?: it.last()).id } ?: input.id
+                slot.nextFocusDownId = candidateRows.getOrNull(row + 1)?.let { (it.getOrNull(i) ?: it.last()).id }
+                    ?: keys.getOrNull(i)?.id ?: keys.first().id
+            }
         }
         actions.forEachIndexed { i, view ->
             view.nextFocusLeftId = actions.getOrNull(i - 1)?.takeIf { i % 3 != 0 }?.id ?: view.id
             view.nextFocusRightId = if (i % 3 == 2) right else actions.getOrNull(i + 1)?.id ?: right
-            view.nextFocusUpId = actions.getOrNull(i - 3)?.id ?: keys[30 + i % 3].id
+            view.nextFocusUpId = actions.getOrNull(i - 3)?.id ?: keys[keys.size - 6 + i % 3].id
             view.nextFocusDownId = actions.getOrNull(i + 3)?.id ?: view.id
         }
         recents.forEachIndexed { i, view ->
@@ -326,6 +352,87 @@ internal class TvSearchPanel(
         }
         input.nextFocusRightId = right
         input.nextFocusUpId = input.id
-        input.nextFocusDownId = keys.first().id
+        input.nextFocusDownId = slots.firstOrNull()?.id ?: keys.first().id
+    }
+
+    private fun keyGrid(labels: List<String>, into: MutableList<TextView>, type: (String) -> Unit): LinearLayout {
+        val grid = LinearLayout(context).apply { orientation = VERTICAL; setPadding(0, dp(8), 0, 0) }
+        labels.chunked(6).forEach { row ->
+            val line = LinearLayout(context)
+            row.forEach { label ->
+                val key = action(label) { type(label) }
+                val keyIndex = into.size
+                val styleFocus = key.onFocusChangeListener
+                key.setOnFocusChangeListener { view, focused ->
+                    styleFocus?.onFocusChange(view, focused)
+                    if (focused) { lastKey = keyIndex; suggestionsNavigation() }
+                }
+                into += key
+                line.addView(key, LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(5); bottomMargin = dp(5) })
+            }
+            grid.addView(line)
+        }
+        return grid
+    }
+
+    private fun setZhuyinMode(enabled: Boolean) {
+        if (enabled == zhuyinMode) return
+        // Leaving Zhuyin turns whatever is still being composed into simplified characters.
+        if (!enabled) input.setText(zhuyin.finish(input.text.toString(), suggestions.values()))
+        input.setSelection(input.text.length)
+        zhuyinMode = enabled
+        preferences.edit().putBoolean("zhuyin", enabled).apply()
+        lastKey = lastKey.coerceIn(0, keys.lastIndex)
+        applyMode()
+    }
+
+    private fun applyMode() {
+        abcGrid.visibility = if (zhuyinMode) GONE else VISIBLE
+        zhuyinGrid.visibility = if (zhuyinMode) VISIBLE else GONE
+        modeButton.text = if (zhuyinMode) "ABC" else "注音"
+        renderCandidates()
+    }
+
+    private fun candidates(): List<String> = if (zhuyinMode) zhuyin.candidatesFor(input.text.toString()) else emptyList()
+
+    private fun renderCandidates() {
+        val all = candidates()
+        val paged = all.size > candidateSlots.size
+        val perPage = if (paged) candidateSlots.size - 1 else candidateSlots.size
+        if (candidatePage * perPage >= all.size) candidatePage = 0
+        val page = all.drop(candidatePage * perPage).take(perPage)
+        val hadFocus = candidateSlots.any { it.hasFocus() }
+        candidateSlots.forEachIndexed { i, slot ->
+            val text = when {
+                i < page.size -> page[i]
+                paged && i == candidateSlots.lastIndex -> "›"
+                else -> null
+            }
+            slot.text = text.orEmpty()
+            slot.visibility = if (text != null) VISIBLE else INVISIBLE
+            slot.isFocusable = text != null
+        }
+        candidateGrid.visibility = if (all.isEmpty()) GONE else VISIBLE
+        (candidateGrid.getChildAt(1) as? LinearLayout)?.visibility =
+            if (candidateSlots.drop(6).any { it.visibility == VISIBLE }) VISIBLE else GONE
+        updateNavigation()
+        if (hadFocus && all.isNotEmpty()) candidateSlots.first().requestFocus()
+        else if (hadFocus) keys[lastKey].requestFocus()
+    }
+
+    private fun pickCandidate(index: Int) {
+        val slot = candidateSlots.getOrNull(index) ?: return
+        if (slot.text == "›") { candidatePage++; renderCandidates(); return }
+        val chosen = slot.text.toString().takeIf { it.isNotEmpty() } ?: return
+        input.setText(zhuyin.commit(input.text.toString(), chosen))
+        input.setSelection(input.text.length)
+    }
+
+    companion object {
+        @Volatile private var table: Zhuyin? = null
+        private fun zhuyinFor(context: Context): Zhuyin =
+            table ?: synchronized(this) {
+                table ?: Zhuyin(context.assets.open("zhuyin.tsv").bufferedReader().use { it.readText() }).also { table = it }
+            }
     }
 }
