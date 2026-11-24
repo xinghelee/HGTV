@@ -1565,6 +1565,8 @@ class MainActivity : Activity() {
         val width =
             ((resources.displayMetrics.widthPixels - dp(172) - dp(24) - gap * (count - 1)) / count).toInt()
         list.clipChildren = false
+        // The padding is room for the focused card's 6% lift; clipping to it cut the card's corners.
+        list.clipToPadding = false
         list.setPadding(dp(12), dp(10), dp(12), dp(10))
         scroll.clipChildren = false
         displayed.chunked(count).forEach { items ->
@@ -1696,13 +1698,16 @@ class MainActivity : Activity() {
                         preview.show(collectionPreviewSeries(item), selectionStatus(item))
                         if (!restoringScroll)
                             scroll.post {
+                                // Leave room around the row: the focused card scales up by 6% and
+                                // would otherwise be cut off at the scroll view's edge.
+                                val margin = dp(16)
                                 scroll.smoothScrollTo(
                                     0,
                                     when {
-                                        line.top < scroll.scrollY -> line.top
-                                        line.bottom > scroll.scrollY + scroll.height ->
-                                            if (line.height >= scroll.height) line.top
-                                            else (line.bottom - scroll.height).coerceAtLeast(0)
+                                        line.top - margin < scroll.scrollY -> (line.top - margin).coerceAtLeast(0)
+                                        line.bottom + margin > scroll.scrollY + scroll.height ->
+                                            if (line.height + margin * 2 >= scroll.height) (line.top - margin).coerceAtLeast(0)
+                                            else (line.bottom + margin - scroll.height).coerceAtLeast(0)
                                         else -> scroll.scrollY
                                     },
                                 )
