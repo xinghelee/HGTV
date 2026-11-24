@@ -175,8 +175,36 @@ internal class TvSearchPanel(
         orientation = VERTICAL
         addView(editor, LayoutParams(-1, -1))
         addView(resultStage, LayoutParams(-1, -1))
-        backButton = action("← 返回选词") { back() }
-        val resultHeader = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, dp(12)) }
+        backButton = TextView(context).apply {
+            id = View.generateViewId()
+            text = "返回"
+            textSize = 18f
+            includeFontPadding = false
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isClickable = true
+            setPadding(dp(16), 0, dp(22), 0)
+            compoundDrawablePadding = dp(6)
+            val chevron = TvGlyph(18, dp(20), TvStyle.text)
+            setCompoundDrawablesWithIntrinsicBounds(chevron, null, null, null)
+            fun paint(focused: Boolean) {
+                background = TvStyle.shape(context, if (focused) android.graphics.Color.WHITE else TvVisual.QUIET, radius = 999)
+                val ink = if (focused) TvStyle.background else TvStyle.text
+                setTextColor(ink)
+                chevron.ink = ink
+                chevron.invalidateSelf()
+            }
+            paint(false)
+            setOnFocusChangeListener { _, focused -> paint(focused); TvMotion.focus(this, focused, 1.06f) }
+            setOnClickListener { back() }
+        }
+        val resultHeader = LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            isBaselineAligned = false
+            clipChildren = false
+            clipToPadding = false
+            setPadding(dp(4), dp(4), 0, dp(12))
+        }
         resultHeader.addView(backButton, LayoutParams(-2, dp(46)).apply { rightMargin = dp(20) })
         resultHeader.addView(resultHeading, LayoutParams(0, -2, 1f))
         resultStage.addView(resultHeader)
