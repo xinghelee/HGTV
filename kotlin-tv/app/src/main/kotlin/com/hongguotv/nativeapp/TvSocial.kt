@@ -20,7 +20,7 @@ class TvSocial(
     private val identity: () -> Pair<String, String>?,
     private val readComments: (String, String, String) -> JSONObject = AppCommentPages()::read,
     private val readReviews: (String, String) -> JSONObject =
-        PublicComments(okhttp3.OkHttpClient())::read,
+        PublicComments(com.hongguotv.core.HttpClients.builder().build())::read,
 ) {
     private companion object {
         const val DEFAULT_FONT_DP = 24

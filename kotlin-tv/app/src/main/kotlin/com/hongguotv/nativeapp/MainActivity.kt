@@ -153,7 +153,7 @@ class MainActivity : Activity() {
     private var relaySpeedWatch: Runnable? = null
     private val relayStore by lazy { RelayStore(this) }
     private val relayHttp: okhttp3.OkHttpClient by lazy {
-        okhttp3.OkHttpClient.Builder()
+        com.hongguotv.core.HttpClients.builder()
             .connectTimeout(2, TimeUnit.SECONDS)
             .readTimeout(5, TimeUnit.SECONDS)
             .callTimeout(8, TimeUnit.SECONDS)

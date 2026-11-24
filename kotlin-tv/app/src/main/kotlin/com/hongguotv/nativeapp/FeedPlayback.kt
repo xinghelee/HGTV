@@ -82,7 +82,7 @@ internal interface FeedBackend : Closeable {
 internal class PublicFeedBackend(
     private val quality: Int,
     private val http: OkHttpClient =
-        OkHttpClient.Builder()
+        com.hongguotv.core.HttpClients.builder()
             .connectionPool(feedPool)
             .cookieJar(com.hongguotv.core.MemoryCookies())
             .connectTimeout(12, TimeUnit.SECONDS)

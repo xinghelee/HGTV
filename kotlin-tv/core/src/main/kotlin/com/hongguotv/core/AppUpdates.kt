@@ -88,7 +88,7 @@ internal object UpdateDownloadSources {
 }
 
 class AppUpdateRepository internal constructor(private val http: OkHttpClient, private val sdk: Int = 21) : AppUpdateSource {
-    constructor(sdk: Int = 21) : this(OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
+    constructor(sdk: Int = 21) : this(HttpClients.builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
         .callTimeout(5, TimeUnit.MINUTES).addNetworkInterceptor { chain ->
             val url = chain.request().url
             // Restrict redirects as well as initial requests to known HTTPS download hosts.

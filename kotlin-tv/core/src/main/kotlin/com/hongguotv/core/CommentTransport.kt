@@ -13,7 +13,7 @@ import org.json.JSONObject
 /** Shared anonymous transport for read-only comment lists. Never accepts account credentials. */
 internal class CommentTransport(
     private val playbackSession: PlaybackDeviceSession? = null,
-    private val http: OkHttpClient = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).followRedirects(false).build(),
+    private val http: OkHttpClient = HttpClients.builder().callTimeout(20, TimeUnit.SECONDS).followRedirects(false).build(),
 ) {
     private val signature = CommentSignature()
 

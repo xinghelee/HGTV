@@ -183,7 +183,7 @@ class ContentRepository
 @JvmOverloads
 constructor(
     val http: OkHttpClient =
-        OkHttpClient.Builder()
+        HttpClients.builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(45, TimeUnit.SECONDS)

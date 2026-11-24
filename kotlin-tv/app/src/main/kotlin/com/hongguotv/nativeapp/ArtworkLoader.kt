@@ -82,7 +82,7 @@ class ArtworkLoader(context: Context) {
     // This client owns its dispatcher and pool; cancelling artwork never cancels video or catalog
     // calls.
     private val http =
-        OkHttpClient.Builder()
+        com.hongguotv.core.HttpClients.builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
             .callTimeout(12, TimeUnit.SECONDS)
