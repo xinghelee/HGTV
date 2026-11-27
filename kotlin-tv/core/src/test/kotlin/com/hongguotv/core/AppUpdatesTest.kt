@@ -67,11 +67,10 @@ class AppUpdatesTest {
     }
     @Test fun malformedMetadataFallsBackThroughAllSources() {
         val urls = mutableListOf<String>()
-        repository { url -> urls += url; if (urls.size < 3) "<html>error</html>".toByteArray() else json().toString().toByteArray() }.use {
+        repository { url -> urls += url; if (urls.size < 2) "<html>error</html>".toByteArray() else json().toString().toByteArray() }.use {
             assertEquals(update(), it.latest())
         }
         assertEquals(listOf("https://hg.xinghelee.com/hgtv/update.json",
-            UpdateDownloadSources.MIRROR + AppUpdate.RELEASES + "/latest/download/update.json",
             AppUpdate.RELEASES + "/latest/download/update.json"), urls)
     }
     @Test fun corruptApkFallsBackAndVerifiesNextSource() = withFile { file ->

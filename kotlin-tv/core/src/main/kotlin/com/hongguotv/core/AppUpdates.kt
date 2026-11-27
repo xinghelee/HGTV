@@ -75,16 +75,14 @@ interface AppUpdateSource : java.io.Closeable {
 }
 
 /**
- * Own server first, then the GitHub accelerator and GitHub itself, so updates keep working if
- * any single source disappears. Public release files only; never send credentials to these hosts.
+ * Own server first, then GitHub directly, so updates keep working if either source disappears. Public release files only; never send credentials to these hosts.
  */
 internal object UpdateDownloadSources {
     const val SERVER = "https://hg.xinghelee.com/hgtv"
-    const val MIRROR = "https://ghfast.top/"
-    fun urls(origin: String) = listOf(MIRROR + origin, origin)
+    fun urls(origin: String) = listOf(origin)
     fun manifestUrls() = listOf("$SERVER/update.json") + urls("${AppUpdate.RELEASES}/latest/download/update.json")
     fun apkUrls(update: AppUpdate) = listOf("$SERVER/${update.tag}/${update.fileName}") + urls(update.downloadUrl)
-    val hosts = setOf("hg.xinghelee.com", "ghfast.top", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
+    val hosts = setOf("hg.xinghelee.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
 }
 
 class AppUpdateRepository internal constructor(private val http: OkHttpClient, private val sdk: Int = 21) : AppUpdateSource {
