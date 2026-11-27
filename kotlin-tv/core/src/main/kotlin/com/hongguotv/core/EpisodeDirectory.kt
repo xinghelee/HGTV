@@ -37,6 +37,20 @@ internal object EpisodeDirectory {
         return ids
     }
 
+    fun parseVideoDetail(body: String, expectedCount: Int): List<String> {
+        val root = try { JSONObject(body) } catch (_: org.json.JSONException) {
+            throw IOException("完整分集响应格式异常")
+        }
+        if (root.optInt("code", -1) != 0) throw IOException("完整分集接口暂不可用")
+        val rows = root.optJSONObject("data")?.optJSONObject("video_data")?.optJSONArray("video_list") ?: JSONArray()
+        val items = (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+        val ids = items.map { it.str("vid") }
+        // vid_index is 1-based and contiguous in upstream order; anything else means a partial list.
+        val ordered = items.withIndex().all { (index, row) -> !row.has("vid_index") || row.optInt("vid_index") == index + 1 }
+        if (!ordered || !valid(ids, expectedCount)) throw IOException("完整分集数据缺失或异常")
+        return ids
+    }
+
     private fun valid(ids: List<String>, expectedCount: Int): Boolean =
         ids.isNotEmpty() && ids.size >= expectedCount &&
             ids.all { it.matches(numericId) } && ids.distinct().size == ids.size

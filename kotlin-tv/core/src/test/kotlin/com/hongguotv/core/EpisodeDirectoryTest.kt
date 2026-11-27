@@ -144,7 +144,42 @@ class EpisodeDirectoryTest {
         } catch (error: IOException) {
             assertEquals("完整分集暂不可用，请稍后重试", error.message)
         }
-        assertEquals(3, requests.size)
+        assertEquals(5, requests.size)
+    }
+
+    private fun videoDetail(values: List<String> = ids): String =
+        JSONObject().put("code", 0).put("data", JSONObject().put("video_data", JSONObject()
+            .put("video_list", JSONArray(values.mapIndexed { index, vid ->
+                JSONObject().put("vid", vid).put("vid_index", index + 1)
+            })))).toString()
+
+    @Test fun seriesMissingFromAppDirectoryUseVideoDetail() {
+        val requests = mutableListOf<Request>()
+        val detail = repository(requests) {
+            when (it.url.encodedPath) {
+                "/detail" -> web()
+                "/novel/player/video_detail/v1/" -> videoDetail()
+                else -> """{"code":101104,"message":"该书不存在或已停止合作","data":{"item_list":[]}}"""
+            }
+        }.detail(seriesId)
+        assertEquals(ids, detail.episodes)
+        val request = requests.last()
+        assertEquals(4, requests.size)
+        assertEquals(seriesId, request.url.queryParameter("series_id"))
+        assertNotNull(request.header("x-medusa"))
+    }
+
+    @Test fun videoDetailRejectsPartialOrReorderedLists() {
+        assertEquals(ids, EpisodeDirectory.parseVideoDetail(videoDetail(), 5))
+        val skipped = JSONObject(videoDetail()).apply {
+            getJSONObject("data").getJSONObject("video_data").getJSONArray("video_list").getJSONObject(1).put("vid_index", 7)
+        }.toString()
+        for (body in listOf("", "{}", videoDetail(ids.take(3)), skipped, """{"code":1,"data":{}}""")) {
+            try {
+                EpisodeDirectory.parseVideoDetail(body, 5)
+                fail("Accepted invalid video detail: $body")
+            } catch (_: IOException) { }
+        }
     }
 
     @Test fun cancellationStopsBeforeTryingAnotherDirectoryHost() {

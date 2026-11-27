@@ -858,15 +858,24 @@ constructor(
             val transport = http.newBuilder().connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(8, TimeUnit.SECONDS).callTimeout(10, TimeUnit.SECONDS).build()
             var failure: IOException? = null
+            val hosts = listOf("api5-normal-sinfonlinea.fqnovel.com", "api5-normal-sinfonlineb.fqnovel.com")
+            // all_items answers 101104 for Hongguo-only series; video_detail still lists those (2026-11-27).
+            val sources = listOf<Pair<(String) -> Signer.Request, (String) -> List<String>>>(
+                { host: String -> signer.sign("https://$host/reading/bookapi/directory/all_items/v/",
+                    VendorConstants.device + mapOf("book_id" to id, "need_version" to "true")) } to
+                    { body: String -> EpisodeDirectory.parse(body, expectedCount) },
+                { host: String -> signer.sign("https://$host/novel/player/video_detail/v1/",
+                    VendorConstants.device + mapOf("series_id" to id)) } to
+                    { body: String -> EpisodeDirectory.parseVideoDetail(body, expectedCount) },
+            )
             // Existing browsing signature: no account login or playback-device registration.
-            for (host in listOf("api5-normal-sinfonlinea.fqnovel.com", "api5-normal-sinfonlineb.fqnovel.com")) {
+            for ((sign, parse) in sources) for (host in hosts) {
                 RequestScope.ensureActive()
-                val request = signer.sign("https://$host/reading/bookapi/directory/all_items/v/",
-                    VendorConstants.device + mapOf("book_id" to id, "need_version" to "true"))
+                val request = sign(host)
                 try {
                     val body = text(request.url, request, client = transport)
                     RequestScope.ensureActive()
-                    return@withDeadline EpisodeDirectory.parse(body, expectedCount)
+                    return@withDeadline parse(body)
                 } catch (problem: IOException) {
                     RequestScope.ensureActive()
                     failure = problem
