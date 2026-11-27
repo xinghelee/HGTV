@@ -97,7 +97,8 @@ internal class EpisodeSelectorView(
             setPadding(0, 0, 0, dp(6))
         })
         (group * 20 until minOf((group + 1) * 20, count)).toList().chunked(10).forEach { numbers ->
-            val row = LinearLayout(context).apply { clipChildren = false }
+            // Two-line tiles ("当前"/"上次") must not be shifted down to match single-line baselines.
+            val row = LinearLayout(context).apply { clipChildren = false; isBaselineAligned = false }
             numbers.forEach { index ->
                 val cell = button("${index + 1}" + when {
                     index == current -> "\n当前"
